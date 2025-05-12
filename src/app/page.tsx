@@ -1,25 +1,112 @@
 'use client';
 
 import * as React from 'react';
+import { useActionState } from 'react';
 import { ChatInputForm } from '@/components/chat-input-form';
 import { TopicDisplay } from '@/components/topic-display';
-import type { ProcessedConversationResult } from '@/app/actions';
+import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions';
+import { generateQuizTopicsAction } from '@/app/actions'; // Import the new action
+import { QuizDisplay } from '@/components/quiz-display'; // Import the new Quiz component
+import type { QuizTopic } from '@/ai/flows/generate-quiz-topics'; // Import QuizTopic type
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Loader2, Brain } from 'lucide-react'; // Import icons
+import { useToast } from "@/hooks/use-toast"
+
+// Initial state for quiz generation action
+const initialQuizState: GenerateQuizResult = { quizTopics: null, error: null };
 
 export default function Home() {
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [results, setResults] = React.useState<ProcessedConversationResult | null>(null);
+  // State for initial conversation processing
+  const [isLoadingAnalysis, setIsLoadingAnalysis] = React.useState(false);
+  const [analysisResults, setAnalysisResults] = React.useState<ProcessedConversationResult | null>(null);
 
- const handleProcessingStart = React.useCallback(() => {
-    console.log('[Page] Processing started.'); // Log start
-    setIsLoading(true);
-    setResults(null); // Clear previous results
+  // State for quiz generation and interaction
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = React.useState(false);
+  const [isQuizzing, setIsQuizzing] = React.useState(false);
+  const [quizTopics, setQuizTopics] = React.useState<QuizTopic[] | null>(null);
+  const [rememberedTopics, setRememberedTopics] = React.useState<QuizTopic[]>([]);
+  const [reviewTopics, setReviewTopics] = React.useState<QuizTopic[]>([]);
+  const [showQuizSummary, setShowQuizSummary] = React.useState(false);
+
+  const { toast } = useToast();
+
+  // Quiz Generation Action State
+  const [quizState, generateQuizAction, isQuizActionPending] = useActionState(generateQuizTopicsAction, initialQuizState);
+
+  // --- Handlers for Analysis ---
+  const handleAnalysisStart = React.useCallback(() => {
+    console.log('[Page] Analysis Processing started.'); // Log start
+    setIsLoadingAnalysis(true);
+    setAnalysisResults(null); // Clear previous results
+    // Reset quiz state when starting new analysis
+    setIsGeneratingQuiz(false);
+    setIsQuizzing(false);
+    setQuizTopics(null);
+    setRememberedTopics([]);
+    setReviewTopics([]);
+    setShowQuizSummary(false);
   }, []);
 
-  const handleProcessingComplete = React.useCallback((processedResults: ProcessedConversationResult | null) => {
-    console.log('[Page] Processing complete. Results:', processedResults); // Log completion
-    setResults(processedResults);
-    setIsLoading(false); // Explicitly set loading to false here
+  const handleAnalysisComplete = React.useCallback((processedResults: ProcessedConversationResult | null) => {
+    console.log('[Page] Analysis Processing complete. Results:', processedResults); // Log completion
+    setAnalysisResults(processedResults);
+    setIsLoadingAnalysis(false); // Explicitly set loading to false here
+  }, []);
+
+  // --- Handler for Starting Quiz Generation ---
+  const handleStartQuizGeneration = () => {
+    if (!analysisResults?.originalConversationText) {
+        toast({ title: "Error", description: "Cannot start quiz without conversation text.", variant: "destructive" });
+        return;
+    }
+    console.log('[Page] Starting quiz generation...');
+    setIsGeneratingQuiz(true);
+    setShowQuizSummary(false); // Hide previous summary if any
+    setRememberedTopics([]);
+    setReviewTopics([]);
+
+    // Call the server action using FormData
+    const formData = new FormData();
+    formData.append('conversationText', analysisResults.originalConversationText);
+    // formData.append('count', '5'); // Optional: Specify number of questions
+    generateQuizAction(formData);
+  };
+
+   // --- Effect to handle Quiz Generation Action Results ---
+  React.useEffect(() => {
+    // Only react when the action is done (not pending) and the state is not the initial one
+    if (!isQuizActionPending && quizState !== initialQuizState) {
+      console.log('[Page Effect] Quiz Generation Action state received:', quizState);
+      setIsGeneratingQuiz(false); // Generation finished (success or fail)
+
+      if (quizState.error) {
+        console.error('[Page Effect] Quiz generation failed:', quizState.error);
+        toast({ title: "Quiz Error", description: quizState.error, variant: "destructive" });
+        setQuizTopics(null);
+        setIsQuizzing(false);
+      } else if (quizState.quizTopics && quizState.quizTopics.length > 0) {
+        console.log('[Page Effect] Quiz topics generated successfully.');
+        setQuizTopics(quizState.quizTopics);
+        setIsQuizzing(true); // Start the quiz interface
+        setShowQuizSummary(false); // Ensure summary is hidden
+      } else {
+         console.log('[Page Effect] No quiz topics could be generated.');
+         toast({ title: "Quiz Info", description: "Could not generate specific quiz topics from this conversation." });
+         setQuizTopics(null);
+         setIsQuizzing(false);
+      }
+    }
+  }, [quizState, isQuizActionPending, toast]);
+
+
+   // --- Handlers for Quiz Interaction ---
+  const handleQuizComplete = React.useCallback((remembered: QuizTopic[], review: QuizTopic[]) => {
+    console.log('[Page] Quiz completed.');
+    setRememberedTopics(remembered);
+    setReviewTopics(review);
+    setIsQuizzing(false);
+    setShowQuizSummary(true); // Show the summary view
   }, []);
 
 
@@ -36,24 +123,65 @@ export default function Home() {
             </svg>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">ChatMapper</h1>
           <p className="text-muted-foreground mt-2">
-            Unravel your ChatGPT conversations. Extract topics, map concepts, analyze code, get study notes, and see the connections.
+            Unravel your ChatGPT conversations. Extract topics, map concepts, analyze code, get study notes, and test your recall.
           </p>
         </header>
 
-        <ChatInputForm
-          onProcessingStart={handleProcessingStart}
-          onProcessingComplete={handleProcessingComplete}
-        />
+        {/* Hide input form during quiz */}
+        {!isQuizzing && !showQuizSummary && (
+            <ChatInputForm
+            onProcessingStart={handleAnalysisStart}
+            onProcessingComplete={handleAnalysisComplete}
+            />
+        )}
 
-        {isLoading && <LoadingSkeleton />}
-        {/* Display results only when not loading AND results exist */}
-        {!isLoading && results && <TopicDisplay results={results} />}
-         {/* Display a message if not loading and results are null (initial state or after error clear) */}
-        {!isLoading && !results && (
+
+        {/* Loading/Results Display Logic */}
+        {isLoadingAnalysis && <LoadingSkeleton />}
+
+         {/* Display Analysis Results */}
+        {!isLoadingAnalysis && analysisResults && !analysisResults.error && !isQuizzing && !showQuizSummary && (
+            <>
+                <TopicDisplay results={analysisResults} />
+                {/* Add button to start quiz */}
+                <div className="text-center mt-6">
+                    <Button
+                        onClick={handleStartQuizGeneration}
+                        disabled={isGeneratingQuiz || isQuizActionPending}
+                    >
+                        {(isGeneratingQuiz || isQuizActionPending) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Brain className="mr-2 h-4 w-4" />}
+                        {(isGeneratingQuiz || isQuizActionPending) ? 'Generating Quiz...' : 'Start Recall Quiz'}
+                    </Button>
+                 </div>
+            </>
+        )}
+
+        {/* Display Quiz Interface */}
+        {isQuizzing && quizTopics && (
+            <QuizDisplay
+                topics={quizTopics}
+                onComplete={handleQuizComplete}
+            />
+        )}
+
+        {/* Display Quiz Summary */}
+        {showQuizSummary && (
+            <QuizSummary remembered={rememberedTopics} review={reviewTopics} onRestart={() => setShowQuizSummary(false)} />
+        )}
+
+        {/* Initial State / Error Message */}
+        {!isLoadingAnalysis && !analysisResults && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-muted-foreground mt-6">
               Enter a conversation above and click Analyze to see the results.
             </div>
         )}
+         {/* Display error from analysis */}
+         {!isLoadingAnalysis && analysisResults?.error && !isQuizzing && !showQuizSummary && (
+            <div className="text-center text-red-500 mt-6 p-4 border border-red-500/50 bg-red-500/10 rounded-md">
+              Analysis Error: {analysisResults.error}
+            </div>
+        )}
+
 
       </div>
     </main>
@@ -109,4 +237,65 @@ function LoadingSkeleton() {
       </div>
     </div>
   )
+}
+
+// --- Quiz Summary Component ---
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { CheckCircle, AlertCircle } from 'lucide-react'; // Icons for summary
+
+interface QuizSummaryProps {
+    remembered: QuizTopic[];
+    review: QuizTopic[];
+    onRestart: () => void; // Function to go back to analysis view
+}
+
+function QuizSummary({ remembered, review, onRestart }: QuizSummaryProps) {
+    return (
+        <Card className="w-full mt-6">
+            <CardHeader>
+                <CardTitle>Quiz Summary</CardTitle>
+                <CardDescription>Here's a breakdown of the topics you recalled and those marked for review.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                {/* Remembered Topics */}
+                <div>
+                    <h3 className="text-lg font-semibold mb-3 flex items-center text-green-600">
+                        <CheckCircle className="mr-2 h-5 w-5" /> Remembered Topics ({remembered.length})
+                    </h3>
+                    {remembered.length > 0 ? (
+                        <ul className="space-y-2 list-disc pl-5 text-sm">
+                            {remembered.map((item, index) => (
+                                <li key={`remembered-${index}`}>
+                                    <span className="font-medium">{item.topic}:</span> {item.context}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="text-muted-foreground text-sm italic">No topics marked as remembered.</p>
+                    )}
+                </div>
+
+                {/* Review Topics */}
+                <div>
+                    <h3 className="text-lg font-semibold mb-3 flex items-center text-yellow-600">
+                        <AlertCircle className="mr-2 h-5 w-5" /> Needs Review ({review.length})
+                    </h3>
+                    {review.length > 0 ? (
+                        <ul className="space-y-2 list-disc pl-5 text-sm">
+                            {review.map((item, index) => (
+                                <li key={`review-${index}`}>
+                                    <span className="font-medium">{item.topic}:</span> {item.context}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="text-muted-foreground text-sm italic">No topics marked for review.</p>
+                    )}
+                </div>
+            </CardContent>
+             <CardFooter>
+                 <Button onClick={onRestart} variant="outline">Back to Analysis</Button>
+             </CardFooter>
+        </Card>
+    );
 }

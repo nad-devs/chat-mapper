@@ -4,8 +4,10 @@ import { z } from 'zod';
 import { summarizeTopics, SummarizeTopicsOutput } from '@/ai/flows/summarize-topics';
 import { mapConcepts, MapConceptsInput, MapConceptsOutput } from '@/ai/flows/map-concepts';
 import { analyzeCodeConceptAndFinalExample, AnalyzeCodeOutput } from '@/ai/flows/analyze-code';
-// Import the new flow and its output type
 import { generateStruggleNotes, GenerateStruggleNotesOutput } from '@/ai/flows/generate-struggle-notes';
+// Import the new quiz flow and its types
+import { generateQuizTopics, GenerateQuizTopicsOutput, QuizTopic } from '@/ai/flows/generate-quiz-topics';
+
 
 const processConversationInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
@@ -13,6 +15,7 @@ const processConversationInputSchema = z.object({
 
 // Update the result type to include struggle notes
 export type ProcessedConversationResult = {
+  originalConversationText?: string; // Keep original text for quiz generation
   topicsSummary: string;
   keyTopics: string[];
   conceptsMap: MapConceptsOutput | null;
@@ -20,6 +23,7 @@ export type ProcessedConversationResult = {
   struggleNotes: string | null; // Add the new field for struggle notes
   error?: string | null;
 };
+
 
 export async function processConversation(
   prevState: ProcessedConversationResult | null,
@@ -118,6 +122,7 @@ export async function processConversation(
 
     console.log('[Action] processConversation finished successfully.');
     return {
+      originalConversationText: conversationText, // Store original text
       topicsSummary,
       keyTopics,
       conceptsMap,
@@ -137,4 +142,55 @@ export async function processConversation(
         error: `AI processing failed: ${errorMessage}`,
     };
   }
+}
+
+
+// --- New Action for Generating Quiz Topics ---
+
+const generateQuizInputSchema = z.object({
+  conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
+  count: z.number().optional(),
+});
+
+export type GenerateQuizResult = {
+  quizTopics: QuizTopic[] | null;
+  error?: string | null;
+}
+
+export async function generateQuizTopicsAction(
+  prevState: GenerateQuizResult | null,
+  formData: FormData
+): Promise<GenerateQuizResult> {
+   console.log('[Action] generateQuizTopicsAction started.');
+
+  const validatedFields = generateQuizInputSchema.safeParse({
+    conversationText: formData.get('conversationText'),
+    count: formData.get('count') ? parseInt(formData.get('count') as string, 10) : undefined,
+  });
+
+   if (!validatedFields.success) {
+    const errorMsg = validatedFields.error.flatten().fieldErrors.conversationText?.[0] || 'Invalid input for quiz generation.';
+    console.error('[Action] Quiz Validation failed:', errorMsg);
+    return { quizTopics: null, error: errorMsg };
+  }
+
+  const { conversationText, count } = validatedFields.data;
+
+   try {
+    console.log('[Action] Calling generateQuizTopics flow...');
+    const result = await generateQuizTopics({ conversationText, count });
+    console.log('[Action] generateQuizTopics flow completed. Result:', result);
+
+    if (!result) {
+        return { quizTopics: null, error: "Failed to generate quiz topics from AI." };
+    }
+
+     return { quizTopics: result.quizTopics, error: null };
+
+   } catch(error) {
+     console.error('[Action] Unexpected error generating quiz topics:', error);
+     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred during quiz generation.';
+     return { quizTopics: null, error: `Quiz generation failed: ${errorMessage}` };
+   }
+
 }
