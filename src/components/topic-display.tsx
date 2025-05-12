@@ -23,17 +23,17 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   // Check if there's anything *at all* to display
    const hasSummary = topicsSummary || (keyTopics && keyTopics.length > 0);
    const hasConcepts = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
-   // Check specifically if the simplified code analysis has content
-   const hasCodeAnalysis = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
+   // Check if the code analysis has *either* a concept or a snippet
+   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
 
-   if (!hasSummary && !hasConcepts && !hasCodeAnalysis) {
+   if (!hasSummary && !hasConcepts && !hasCodeAnalysisContent) {
     return (
          <Card className="w-full mt-6">
             <CardHeader>
                 <CardTitle>Conversation Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-                <p className="text-muted-foreground">No significant topics, concepts, or code examples found in the provided conversation.</p>
+                <p className="text-muted-foreground">No significant topics, concepts, or code insights found in the provided conversation.</p>
             </CardContent>
          </Card>
     );
@@ -43,11 +43,11 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const defaultOpenValues = [];
   if (hasSummary) defaultOpenValues.push('summary');
   if (hasConcepts) defaultOpenValues.push('concepts');
-  if (hasCodeAnalysis) defaultOpenValues.push('code');
+  if (hasCodeAnalysisContent) defaultOpenValues.push('code');
   // If nothing else is present, open summary by default if it exists, otherwise concepts, etc.
   if (defaultOpenValues.length === 0 && hasSummary) defaultOpenValues.push('summary');
   else if (defaultOpenValues.length === 0 && hasConcepts) defaultOpenValues.push('concepts');
-  else if (defaultOpenValues.length === 0 && hasCodeAnalysis) defaultOpenValues.push('code');
+  else if (defaultOpenValues.length === 0 && hasCodeAnalysisContent) defaultOpenValues.push('code');
 
 
   return (
@@ -141,8 +141,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
             </AccordionItem>
           )}
 
-          {/* Simplified Code Analysis Section */}
-          {hasCodeAnalysis && codeAnalysis && ( // Check if codeAnalysis exists and has content
+          {/* Code Analysis Section - Render if there's *any* content */}
+          {hasCodeAnalysisContent && codeAnalysis && (
              <AccordionItem value="code">
                <AccordionTrigger className="text-lg font-semibold hover:no-underline">
                  <div className="flex items-center gap-2">
@@ -156,10 +156,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                      <div className="bg-accent/10 p-4 rounded-md">
                         <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-accent"/>Concept Learned / Problem Solved</h3>
                         {/* Changed text color to foreground for better contrast */}
-                        <p className="text-foreground">{codeAnalysis.learnedConcept}</p>
+                        <p className="text-foreground whitespace-pre-wrap">{codeAnalysis.learnedConcept}</p>
                      </div>
                   )}
-                  {/* Display Final Code Snippet */}
+                  {/* Display Final Code Snippet - ONLY if it's not empty */}
                   {codeAnalysis.finalCodeSnippet && (
                      <Card className="bg-muted/10 overflow-hidden">
                         <CardHeader className="p-3 pb-2 bg-muted/20 border-b">
@@ -167,9 +167,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                 <CardTitle className="text-sm font-medium">
                                     Final Code Example
                                 </CardTitle>
-                                {codeAnalysis.codeLanguage && <Badge variant="default" className="text-xs">{codeAnalysis.codeLanguage}</Badge>}
+                                {codeAnalysis.codeLanguage && <Badge variant="default" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
                             </div>
                            {codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: {codeAnalysis.codeLanguage}</CardDescription>}
+                           {!codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: Not detected</CardDescription>}
                         </CardHeader>
                         <CardContent className="p-0">
                           <ScrollArea className="max-h-[400px] w-full"> {/* Increased max height */}
@@ -181,6 +182,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                           </ScrollArea>
                         </CardContent>
                      </Card>
+                  )}
+                  {/* Add a message if a concept was found but no code snippet */}
+                  {codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
+                      <div className="text-muted-foreground text-sm p-4 border border-dashed rounded-md">
+                        No specific code snippet identified for this concept in the conversation.
+                      </div>
                   )}
                </AccordionContent>
              </AccordionItem>

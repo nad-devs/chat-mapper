@@ -23,11 +23,11 @@ const AnalyzeCodeOutputSchema = z.object({
     .describe('A summary of the main coding concept learned or problem solved in the conversation.'),
   finalCodeSnippet: z
     .string()
-    .describe('The final or most complete code snippet provided in the conversation related to the learned concept.'),
+    .describe('The final or most complete code snippet provided in the conversation related to the learned concept, or an empty string if no relevant code snippet is found.'),
    codeLanguage: z
     .string()
     .nullable()
-    .describe('The detected programming language of the final code snippet (e.g., "javascript", "python") or null if unsure.'),
+    .describe('The detected programming language of the final code snippet (e.g., "javascript", "python") or null if no code snippet is found or the language is unsure.'),
 });
 export type AnalyzeCodeOutput = z.infer<typeof AnalyzeCodeOutputSchema>;
 
@@ -36,11 +36,12 @@ export async function analyzeCodeConceptAndFinalExample(input: AnalyzeCodeInput)
   // Return null if the flow fails or returns no meaningful output
   try {
       const result = await analyzeCodeFlow(input);
-      // Basic check if the result seems valid
-      if (result?.learnedConcept && result?.finalCodeSnippet) {
+      // Basic check if the result seems valid (even if only concept is present)
+      if (result?.learnedConcept || result?.finalCodeSnippet) {
           return result;
       }
-      return null;
+      // Return the result even if it's mostly empty, action handler will check content
+      return result;
   } catch (error) {
       console.error("Error in analyzeCodeFlow:", error);
       return null;
@@ -59,11 +60,12 @@ const analyzeCodePrompt = ai.definePrompt({
   {{{conversationText}}}
 
   Your task is to:
-  1. Identify the main coding problem being solved or the primary programming concept being learned or explained. Summarize this in the "learnedConcept" field.
-  2. Find and extract the *final* and most complete code snippet provided in the conversation that represents the solution or the culmination of the discussion about that concept/problem. Put this code in the "finalCodeSnippet" field. Preserve formatting (indentation, line breaks).
-  3. Determine the programming language of the final code snippet (e.g., "javascript", "python", "html"). If the language is unclear or it's not code, set "codeLanguage" to null.
+  1. Identify the main coding problem being solved or the primary programming concept being learned or explained. Summarize this in the "learnedConcept" field. If no specific coding concept is discussed, summarize the main non-coding topic briefly.
+  2. Search for code examples within the conversation. If a relevant code snippet representing the solution or final example related to the concept is found, extract the *final* and most complete version. Put this code in the "finalCodeSnippet" field. Preserve formatting (indentation, line breaks).
+  3. **If NO relevant code snippet is found or discussed in the conversation, you MUST return an empty string ("") for the "finalCodeSnippet" field and null for the "codeLanguage" field.** Do not invent code.
+  4. If a code snippet *is* found, determine its programming language (e.g., "javascript", "python", "html"). If the language is unclear, set "codeLanguage" to null.
 
-  Return the results as a single JSON object matching the specified output schema. If no specific coding concept or final code snippet can be clearly identified, return an object with empty strings for "learnedConcept" and "finalCodeSnippet", and null for "codeLanguage".
+  Return the results as a single JSON object matching the specified output schema.
 `,
 });
 
@@ -81,11 +83,11 @@ const analyzeCodeFlow = ai.defineFlow(
       // Return a structure indicating nothing significant was found, matching the schema
       return { learnedConcept: "", finalCodeSnippet: "", codeLanguage: null };
     }
-     // If AI returns empty strings, pass them through. Add default null for language if missing.
+     // If AI returns empty strings/null, pass them through.
     return {
         learnedConcept: output.learnedConcept || "",
-        finalCodeSnippet: output.finalCodeSnippet || "",
-        codeLanguage: output.codeLanguage !== undefined ? output.codeLanguage : null,
+        finalCodeSnippet: output.finalCodeSnippet || "", // Pass empty string if AI returns it
+        codeLanguage: output.finalCodeSnippet ? (output.codeLanguage !== undefined ? output.codeLanguage : null) : null, // Set language to null if no snippet
     };
   }
 );

@@ -61,9 +61,10 @@ export async function processConversation(
       // Ensure codeAnalysis is initialized even if summary fails early
       let codeAnalysis: AnalyzeCodeOutput | null = null;
       if (codeAnalysisResult.status === 'fulfilled') {
-           codeAnalysis = codeAnalysisResult.value;
+           codeAnalysis = codeAnalysisResult.value; // Keep the result even if empty
       } else if (codeAnalysisResult.status === 'rejected') {
            console.error("[Action] Error analyzing code (during summary error):", codeAnalysisResult.reason);
+           codeAnalysis = null;
       }
       return { topicsSummary: '', keyTopics: [], conceptsMap: null, codeAnalysis: codeAnalysis, error: 'Could not summarize topics.' };
     }
@@ -73,14 +74,10 @@ export async function processConversation(
     // Handle Code Analysis Result
     let codeAnalysis: AnalyzeCodeOutput | null = null;
     if (codeAnalysisResult.status === 'fulfilled' && codeAnalysisResult.value) {
-       // Check if the returned analysis has content, otherwise treat as null
-       if (codeAnalysisResult.value.learnedConcept || codeAnalysisResult.value.finalCodeSnippet) {
-           codeAnalysis = codeAnalysisResult.value;
-           console.log('[Action] Code analyzed successfully.');
-       } else {
-           console.log('[Action] Code analysis returned empty results.');
-           codeAnalysis = null; // Treat empty results as null for simpler display logic
-       }
+       // Pass the result directly, even if concept/snippet are empty.
+       // The frontend will decide whether to display based on content.
+       codeAnalysis = codeAnalysisResult.value;
+       console.log('[Action] Code analyzed successfully (result may be empty).');
     } else if (codeAnalysisResult.status === 'rejected') {
        console.error("[Action] Error analyzing code:", codeAnalysisResult.reason);
        codeAnalysis = null; // Set to null on error
@@ -109,7 +106,7 @@ export async function processConversation(
       topicsSummary,
       keyTopics,
       conceptsMap,
-      codeAnalysis, // Include the potentially null or simplified code analysis results
+      codeAnalysis, // Include the potentially null or empty code analysis results
       error: null,
     };
   } catch (error) {
