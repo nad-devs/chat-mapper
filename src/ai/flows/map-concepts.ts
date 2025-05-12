@@ -36,6 +36,7 @@ export async function mapConcepts(input: MapConceptsInput): Promise<MapConceptsO
 
 const prompt = ai.definePrompt({
   name: 'mapConceptsPrompt',
+  model: 'googleai/gemini-1.5-flash-latest', // Added model
   input: {schema: MapConceptsInputSchema},
   output: {schema: MapConceptsOutputSchema},
   prompt: `You are an expert in analyzing conversations and identifying key concepts, subtopics, and their relationships.

@@ -31,13 +31,14 @@ export async function summarizeTopics(input: SummarizeTopicsInput): Promise<Summ
 
 const summarizeTopicsPrompt = ai.definePrompt({
   name: 'summarizeTopicsPrompt',
+  model: 'googleai/gemini-1.5-flash-latest', // Added model
   input: {schema: SummarizeTopicsInputSchema},
   output: {schema: SummarizeTopicsOutputSchema},
   prompt: `You are an expert at identifying the topics discussed in a conversation.
 
   Summarize the topics discussed in the following conversation:
 
-  {{conversation}}`,
+  {{{conversation}}}`,
 });
 
 const summarizeTopicsFlow = ai.defineFlow(
