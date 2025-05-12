@@ -1,11 +1,14 @@
+
 'use client';
 
 import * as React from 'react';
 import { useActionState, startTransition } from 'react';
 import { ChatInputForm } from '@/components/chat-input-form';
 import { TopicDisplay } from '@/components/topic-display';
-import type { ProcessedConversationResult, GenerateQuizResult, SaveNotesResult } from '@/app/actions'; // Import SaveNotesResult
-import { generateQuizTopicsAction, saveUpdatedNotesAction } from '@/app/actions'; // Import save action
+// Remove SaveNotesResult import
+import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions';
+// Remove saveUpdatedNotesAction import
+import { generateQuizTopicsAction } from '@/app/actions';
 import { QuizDisplay } from '@/components/quiz-display';
 import type { QuizTopic } from '@/ai/flows/generate-quiz-topics';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,8 +33,8 @@ const initialAnalysisState: ProcessedConversationResult = {
     originalConversationText: '',
 };
 
-// Initial state for saving notes action
-const initialSaveNotesState: SaveNotesResult = { success: false, error: null, info: null };
+// Removed initial state for saving notes action
+// const initialSaveNotesState: SaveNotesResult = { success: false, error: null, info: null };
 
 
 export default function Home() {
@@ -48,8 +51,8 @@ export default function Home() {
   const [reviewTopics, setReviewTopics] = React.useState<QuizTopic[]>([]);
   const [showQuizSummary, setShowQuizSummary] = React.useState(false);
 
-  // State for saving generated notes
-  const [saveNotesState, saveNotesFormAction, isSaveNotesPending] = useActionState(saveUpdatedNotesAction, initialSaveNotesState);
+  // Removed state for saving generated notes
+  // const [saveNotesState, saveNotesFormAction, isSaveNotesPending] = useActionState(saveUpdatedNotesAction, initialSaveNotesState);
 
   const { toast } = useToast();
 
@@ -93,7 +96,7 @@ export default function Home() {
             console.log("[Page] Analysis completed successfully. Notes generated.");
             toast({
                 title: "Analysis Complete",
-                description: "Conversation analyzed. You can now review insights and save the study notes.",
+                description: "Conversation analyzed. You can now review insights.", // Removed mention of saving notes
                 duration: 5000
             });
         } else {
@@ -175,49 +178,11 @@ export default function Home() {
     setShowQuizSummary(true); // Show the summary card
   }, []);
 
-  // --- Handler for Triggering Save Generated Notes Action ---
-  const handleSaveNotes = () => {
-      if (!analysisResults || !analysisResults.studyNotes || analysisResults.studyNotes.trim() === '') {
-          toast({ title: "Info", description: "No study notes available to save.", variant: "default"});
-          return;
-      }
-       if (isSaveNotesPending) {
-          toast({ title: "Info", description: "Save already in progress.", variant: "default"});
-          return;
-      }
+  // --- Removed Handler for Triggering Save Generated Notes Action ---
+  // const handleSaveNotes = () => { ... };
 
-      // Determine topic name for saving
-      const topicName = analysisResults.category
-                      || (analysisResults.topicsSummary && analysisResults.topicsSummary.trim().length > 0 ? analysisResults.topicsSummary.substring(0, 50) : null)
-                      || "Untitled Analysis";
-
-      console.log(`[Page] Triggering save action for generated notes for topic: ${topicName}`);
-      const formData = new FormData();
-      formData.append('topicName', topicName);
-      formData.append('studyNotes', analysisResults.studyNotes); // Use the original generated notes
-
-      startTransition(() => {
-          saveNotesFormAction(formData); // Call the action bound to saveUpdatedNotesAction
-      });
-  };
-
-  // --- Effect to handle Save Notes Action Results ---
-  React.useEffect(() => {
-      if (!isSaveNotesPending && saveNotesState !== initialSaveNotesState) {
-          console.log('[Page Effect] Save Notes Action state received:', saveNotesState);
-          if (saveNotesState.success) {
-             if(saveNotesState.info) {
-                // Handle the case where saving was skipped (e.g., empty notes)
-                 toast({ title: "Info", description: saveNotesState.info });
-             } else {
-                toast({ title: "Success", description: "Study notes saved successfully to database." });
-             }
-          } else {
-              toast({ title: "Save Error", description: saveNotesState.error || "Failed to save notes to database.", variant: "destructive" });
-          }
-      }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveNotesState, isSaveNotesPending, toast]);
+  // --- Removed Effect to handle Save Notes Action Results ---
+  // React.useEffect(() => { ... });
 
 
   // --- Handler for going back from Quiz Summary ---
@@ -240,7 +205,7 @@ export default function Home() {
             </svg>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">ChatMapper</h1>
           <p className="text-muted-foreground mt-2">
-            Unravel your ChatGPT conversations. Extract topics, analyze code, get study notes, test your recall, and save your notes.
+            Unravel your ChatGPT conversations. Extract topics, analyze code, get study notes, and test your recall.
           </p>
         </header>
 
@@ -275,8 +240,7 @@ export default function Home() {
              <>
                  <TopicDisplay
                     results={analysisResults} // Pass full results, including potential null fields
-                    onSaveNotes={handleSaveNotes} // Pass handler to trigger save action
-                    isSavingNotes={isSaveNotesPending} // Pass saving state
+                    // Removed save props: onSaveNotes={handleSaveNotes} isSavingNotes={isSaveNotesPending}
                  />
                  {/* Conditionally render quiz button only if analysis was successful enough (no processing error and some content exists) */}
                  {!analysisError && (analysisResults.topicsSummary || (analysisResults.keyTopics && analysisResults.keyTopics.length > 0)) && (
@@ -314,7 +278,7 @@ export default function Home() {
         {/* Initial State / Placeholder Message (hide if loading, results available (even with error), quizzing, or showing summary) */}
         {!isLoadingAnalysis && !analysisResults && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-muted-foreground mt-6">
-              Enter a conversation above and click Analyze to generate insights. You can save the notes afterward.
+              Enter a conversation above and click Analyze to generate insights.
             </div>
         )}
 

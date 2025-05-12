@@ -1,6 +1,6 @@
 
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
+// Remove Firestore imports: import { getFirestore, Firestore } from 'firebase/firestore';
 // Add other Firebase services as needed (e.g., getAuth, getStorage)
 
 // Log which variables are being used for configuration
@@ -45,21 +45,23 @@ if (!getApps().length) {
   console.log("[Firebase] Existing Firebase App retrieved.");
 }
 
-// Initialize Firestore and export it
-let db: Firestore;
-try {
-    db = getFirestore(app);
-    console.log("[Firebase] Firestore initialized successfully.");
-} catch(e) {
-    console.error("[Firebase] Error initializing Firestore:", e);
-    // Rethrow or handle error as needed
-    throw e;
-}
+// Removed Firestore initialization and export
+// let db: Firestore;
+// try {
+//     db = getFirestore(app);
+//     console.log("[Firebase] Firestore initialized successfully.");
+// } catch(e) {
+//     console.error("[Firebase] Error initializing Firestore:", e);
+//     // Rethrow or handle error as needed
+//     throw e;
+// }
 
 
-// Export the app and db instance
-export { app, db };
+// Export only the app instance
+export { app }; // Removed db export
 
 // Note: Ensure that your Firestore rules in the Firebase console
 // allow write access to the 'learningEntries' collection for authenticated users
 // or for the specific service account/identity running your server actions if applicable.
+// (This note is less relevant now but kept for context if Firestore is re-added later)
+

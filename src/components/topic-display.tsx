@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import type { ProcessedConversationResult } from '@/app/actions';
 import {
@@ -11,16 +12,16 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
-// import { Textarea } from '@/components/ui/textarea'; // Removed Textarea import
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Save, Folder, Loader2 } from 'lucide-react'; // Import icons, removed Edit, XCircle
+// Removed Button import as Save button is removed
+// import { Button } from '@/components/ui/button';
+// Removed unused icons
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder } from 'lucide-react';
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
-  // onNotesUpdate: (updatedNotes: string) => void; // Removed notes update callback
-  onSaveNotes: () => void; // Callback to trigger saving notes via action
-  isSavingNotes: boolean; // Flag indicating if save action is pending
-  // hasPendingNoteChanges: boolean; // Removed flag for local edits
+  // Removed database related props
+  // onSaveNotes: () => void;
+  // isSavingNotes: boolean;
 }
 
 // Simple Markdown-like renderer (basic bold, list, H3, inline code support)
@@ -111,10 +112,9 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 export function TopicDisplay({
     results,
-    // onNotesUpdate, // Removed
-    onSaveNotes, // Function to trigger save action in parent
-    isSavingNotes, // Boolean indicating if save is in progress
-    // hasPendingNoteChanges // Removed
+    // Removed database related props
+    // onSaveNotes,
+    // isSavingNotes,
 }: TopicDisplayProps) {
   // Use nullish coalescing for safer access
   const topicsSummary = results.topicsSummary ?? null;
@@ -124,32 +124,15 @@ export function TopicDisplay({
   const codeAnalysis = results.codeAnalysis ?? null;
   const studyNotes = results.studyNotes ?? null; // The original notes from analysis
 
-  // State for editing study notes - REMOVED
-  // const [isEditingNotes, setIsEditingNotes] = React.useState(false);
-  // const [editedNotes, setEditedNotes] = React.useState(studyNotes || "");
-
-  // Effect to update local state if notes prop changes - REMOVED
-  // React.useEffect(() => { ... });
-
-  // Handlers for editing notes - REMOVED
-  // const handleEditNotesClick = () => { ... };
-  // const handleCancelEditClick = () => { ... };
-  // const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => { ... };
-
-  // Handler for saving notes - Simplified
-  const handleSaveNotesClick = () => {
-    // Call the callback provided by the parent to trigger the save action
-    console.log("[TopicDisplay] Save button clicked, calling onSaveNotes prop.");
-    onSaveNotes();
-    // No need to exit edit mode
-  };
+  // Removed save notes click handler
+  // const handleSaveNotesClick = () => { ... };
 
 
   // Determine if each section has content
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  // Study notes tab should always be available, either showing content or allowing saving.
+  // Study notes tab should always be available
   const hasStudyNotesContent = true; // Always show the notes tab
 
   const availableTabs = [
@@ -159,10 +142,10 @@ export function TopicDisplay({
     { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
   ].filter(tab => tab.hasContent); // Filter out tabs with no content initially
 
-  // Determine if notes exist for enabling the save button
+  // Determine if notes exist for displaying content
   const notesExist = studyNotes && studyNotes.trim().length > 0;
 
-  // If no tabs have content initially (except notes), show a message
+  // If no tabs have content initially (except possibly notes), show a message
   if (availableTabs.length <= 1 && !notesExist) {
     return (
       <Card className="w-full mt-6">
@@ -196,7 +179,7 @@ export function TopicDisplay({
     <Card className="w-full mt-6">
       <CardHeader>
         <CardTitle>Conversation Analysis</CardTitle>
-        <CardDescription>Explore the insights extracted from the conversation. Generated notes can be saved.</CardDescription>
+        <CardDescription>Explore the insights extracted from the conversation.</CardDescription>
          {/* Display Category Badge if available */}
          {category && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm">
@@ -288,8 +271,8 @@ export function TopicDisplay({
            {hasCodeAnalysisContent && codeAnalysis && (
              <TabsContent value="code" className="space-y-4">
                {codeAnalysis.learnedConcept && (
-                 <div className="bg-primary/10 p-4 rounded-md border border-primary/20">
-                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-primary"/>Concept Learned / Problem Solved</h3>
+                 <div className="bg-primary/10 dark:bg-primary/5 p-4 rounded-md border border-primary/20 dark:border-primary/30">
+                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground/80"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
                    <p className="whitespace-pre-wrap text-foreground">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
@@ -334,17 +317,7 @@ export function TopicDisplay({
                             <Lightbulb className="h-4 w-4 text-secondary-foreground" />
                             Study Notes
                             </h3>
-                            {/* Save Button */}
-                            <Button
-                                variant="default"
-                                size="sm"
-                                onClick={handleSaveNotesClick} // Trigger save via parent
-                                disabled={isSavingNotes || !notesExist} // Disable if saving or no notes exist
-                                title={notesExist ? "Save generated notes" : "No notes generated to save"}
-                            >
-                                {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-                                {isSavingNotes ? 'Saving...' : 'Save Notes'}
-                            </Button>
+                            {/* Removed Save Button */}
                         </div>
 
                          {/* Display rendered notes or a message if empty */}
@@ -365,5 +338,3 @@ export function TopicDisplay({
     </Card>
   );
 }
-
-    
