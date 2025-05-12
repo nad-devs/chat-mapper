@@ -1,4 +1,3 @@
-
 import * as React from 'react';
 import type { ProcessedConversationResult, SaveEntryResult } from '@/app/actions';
 import { saveEntryAction } from '@/app/actions';
@@ -78,13 +77,12 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
              language = langMatch[1];
          }
          let inCodeBlock = true;
-         for (let i = index + 1; i < lines.length; i++) {
-             if (lines[i].trim() === '```') {
-                 inCodeBlock = false;
-                 break;
-             }
-             codeContent += lines[i] + '\n';
-         }
+         // Simple approach: Assume block ends before next ``` or end of lines
+         let codeEndIndex = lines.findIndex((l, i) => i > index && l.trim() === '```');
+         if (codeEndIndex === -1) codeEndIndex = lines.length;
+
+         codeContent = lines.slice(index + 1, codeEndIndex).join('\n');
+
          // Render the code block as pre/code - note: this simple renderer doesn't skip lines already rendered
          return (
              <pre key={index} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border">
@@ -92,8 +90,13 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
              </pre>
          );
      }
+     // Avoid rendering lines that are part of a code block already handled
+     if (lines.slice(0, index).some((l, i) => l.trim().startsWith('```') && lines.slice(i + 1, index + 1).every(subL => subL.trim() !== '```'))) {
+        return null;
+     }
+
     // Handle empty lines as breaks (but not within code blocks)
-    if (trimmedLine === '' && !lines.slice(0, index).some(l => l.trim().startsWith('```')) && !lines.slice(index + 1).some(l => l.trim().startsWith('```'))) {
+    if (trimmedLine === '') {
         return <br key={index} />;
     }
     // Default paragraph rendering
@@ -106,6 +109,8 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
    let listType: 'ul' | 'ol' | null = null;
 
    elements.forEach((el, index) => {
+     if (!el) return; // Skip null elements (like consumed code block lines)
+
      const isListItem = React.isValidElement(el) && el.type === 'li';
      const isPre = React.isValidElement(el) && el.type === 'pre';
 
@@ -132,13 +137,13 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
        }
        // Don't render paragraphs that are just empty strings (often result of split)
        // unless it's an intentional break <br/> or code block <pre>
-       if (React.isValidElement(el) && (el.type === 'br' || el.type === 'pre' || (el.type === 'p' && el.props.children))) {
+       if (React.isValidElement(el) && (el.type === 'br' || el.type === 'pre' || (el.type === 'p' && el.props.children) || el.type === 'h3')) {
            groupedElements.push(el);
        } else if (!React.isValidElement(el)) {
             // Handle raw text nodes if necessary, though unlikely with current logic
             // groupedElements.push(el);
        } else if (React.isValidElement(el) && el.type !== 'p') {
-            // Add other valid elements like h3
+            // Add other valid elements like h3 (already handled above, but kept for structure)
              groupedElements.push(el);
        }
      }
@@ -152,7 +157,8 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
    }
 
   // Apply base text styling
-  return <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none prose-headings:text-primary prose-p:text-foreground/90 prose-li:text-foreground/90 prose-strong:text-foreground prose-code:bg-muted prose-code:text-foreground prose-pre:bg-muted prose-pre:text-foreground prose-pre:border prose-pre:rounded-md">{groupedElements}</div>;
+  // Updated prose classes for better dark mode support and general styling
+  return <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none prose-headings:text-primary prose-p:text-foreground/90 prose-li:text-foreground/90 prose-strong:text-foreground prose-code:bg-muted prose-code:text-foreground prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted prose-pre:text-foreground prose-pre:border prose-pre:rounded-md prose-pre:p-3">{groupedElements}</div>;
 };
 
 
@@ -266,6 +272,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const originalNotesExist = !!studyNotes && studyNotes.trim().length > 0;
   const originalCodeExists = !!codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0;
 
+  // Determine which tabs should be available based on content
   const hasOverviewContent = originalSummaryExists || (keyTopics && keyTopics.length > 0) || isEditingSummary;
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || originalCodeExists);
@@ -273,10 +280,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   const availableTabs = [
     hasOverviewContent && { value: 'overview', label: 'Overview', icon: FileText },
-    hasConceptsContent && { value: 'concepts', label: 'Concept Map', icon: Shapes },
     hasCodeAnalysisContent && { value: 'code', label: 'Code Insight', icon: Code },
     hasStudyNotesContent && { value: 'notes', label: 'Study Notes', icon: Lightbulb },
+    // Keep Concept Map optional for now, can be added back if needed
+    // hasConceptsContent && { value: 'concepts', label: 'Concept Map', icon: Shapes },
   ].filter(Boolean) as { value: string, label: string, icon: React.ElementType }[];
+
 
   // Check if anything needs saving (considering edits)
   const anythingToSave = (editedSummary && editedSummary.trim().length > 0) ||
@@ -322,129 +331,96 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                      {tab.label}
                  </TabsTrigger>
              ))}
+             {/* Ensure all possible columns are used or adjust grid-cols */}
+             {availableTabs.length < 4 && <div className="hidden md:block"></div>}
+             {availableTabs.length < 3 && <div className="hidden md:block"></div>}
+             {availableTabs.length < 2 && <div className="hidden md:block"></div>}
           </TabsList>
 
-          {/* Overview Tab */}
-          {hasOverviewContent && (
-            <TabsContent value="overview" className="space-y-4">
-                {/* Learning Summary Section - Editable */}
-                <Card className="bg-secondary/30 dark:bg-secondary/10 border border-border/50">
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                        <CardTitle className="text-md flex items-center gap-2 text-secondary-foreground"><FileText className="h-4 w-4"/>Learning Summary</CardTitle>
-                         {!isEditingSummary ? (
-                            <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7" disabled={!originalSummaryExists && !isEditingSummary}>
-                                <Edit className="h-4 w-4" />
-                                <span className="sr-only">Edit Learning Summary</span>
-                            </Button>
-                        ) : (
-                            <div className="flex gap-1">
-                                <Button variant="ghost" size="icon" onClick={handleSaveSummaryEdit} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
-                                    <Save className="h-4 w-4" />
-                                    <span className="sr-only">Save Summary Edit</span>
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={handleCancelSummaryEdit} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
-                                    <X className="h-4 w-4" />
-                                    <span className="sr-only">Cancel Edit Summary</span>
-                                </Button>
-                            </div>
-                        )}
-                    </CardHeader>
-                    <CardContent>
-                        {isEditingSummary ? (
-                             <Textarea
-                                value={editedSummary}
-                                onChange={(e) => setEditedSummary(e.target.value)}
-                                rows={5}
-                                className="w-full text-sm bg-background dark:bg-background/80 border-input"
-                                placeholder="Enter learning summary..."
-                            />
-                        ) : (editedSummary && editedSummary.trim().length > 0) || originalSummaryExists ? (
-                            <div className="text-foreground/90 text-sm">
-                                <SimpleMarkdownRenderer content={editedSummary} />
-                            </div>
-                         ) : (
-                            <span className="italic text-muted-foreground text-sm">No learning summary generated.</span>
-                        )}
-                    </CardContent>
-                </Card>
+          {/* Overview Tab Content */}
+           {hasOverviewContent && (
+             <TabsContent value="overview" className="space-y-4">
+                 {/* Learning Summary Section - Editable */}
+                 {(originalSummaryExists || isEditingSummary) && (
+                     <Card className="bg-secondary/30 dark:bg-secondary/10 border border-border/50">
+                         <CardHeader className="p-3 pb-2 flex flex-row items-center justify-between">
+                             <CardTitle className="text-base flex items-center gap-2 text-secondary-foreground"><FileText className="h-4 w-4"/>Learning Summary</CardTitle>
+                              {!isEditingSummary ? (
+                                 <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7" disabled={!originalSummaryExists && !isEditingSummary}>
+                                     <Edit className="h-4 w-4" />
+                                     <span className="sr-only">Edit Learning Summary</span>
+                                 </Button>
+                             ) : (
+                                 <div className="flex gap-1">
+                                     <Button variant="ghost" size="icon" onClick={handleSaveSummaryEdit} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                                         <Save className="h-4 w-4" />
+                                         <span className="sr-only">Save Summary Edit</span>
+                                     </Button>
+                                     <Button variant="ghost" size="icon" onClick={handleCancelSummaryEdit} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                                         <X className="h-4 w-4" />
+                                         <span className="sr-only">Cancel Edit Summary</span>
+                                     </Button>
+                                 </div>
+                             )}
+                         </CardHeader>
+                         <CardContent className="p-3">
+                             {isEditingSummary ? (
+                                  <Textarea
+                                     value={editedSummary}
+                                     onChange={(e) => setEditedSummary(e.target.value)}
+                                     rows={5}
+                                     className="w-full text-sm bg-background dark:bg-background/80 border-input"
+                                     placeholder="Enter learning summary..."
+                                 />
+                             ) : (editedSummary && editedSummary.trim().length > 0) ? (
+                                 <div className="text-foreground/90 text-sm">
+                                     <SimpleMarkdownRenderer content={editedSummary} />
+                                 </div>
+                              ) : (
+                                 <span className="italic text-muted-foreground text-sm">No learning summary generated. You can add one.</span>
+                             )}
+                         </CardContent>
+                     </Card>
+                 )}
 
-                {/* Key Topics Section */}
-                {keyTopics && keyTopics.length > 0 && (
-                    <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
-                      <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-secondary-foreground"><Tags className="h-4 w-4"/>Key Topics</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {keyTopics.map((topic, index) => (
-                          <Badge key={`keytopic-${index}`} variant="secondary">{topic}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                )}
-            </TabsContent>
-          )}
-
-          {/* Concept Map Tab */}
-          {hasConceptsContent && conceptsMap && (
-             <TabsContent value="concepts" className="space-y-4">
-                {conceptsMap.subtopics && conceptsMap.subtopics.length > 0 && (
-                  <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-border/50">
-                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-muted-foreground"><ListTree className="h-4 w-4"/>Subtopics</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {conceptsMap.subtopics.map((subtopic, index) => (
-                        <Badge key={`subtopic-${index}`} variant="outline" className="border-muted-foreground/50 text-muted-foreground">{subtopic}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {conceptsMap.concepts && conceptsMap.concepts.length > 0 && (
-                   <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-border/50">
-                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-muted-foreground"><BrainCircuit className="h-4 w-4"/>Key Concepts</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {conceptsMap.concepts.map((concept, index) => (
-                        <Badge key={`concept-${index}`} variant="outline" className="border-accent text-accent">{concept}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {conceptsMap.relationships && conceptsMap.relationships.length > 0 && (
-                   <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-border/50">
-                    <h3 className="text-md font-semibold mb-3 flex items-center gap-2 text-muted-foreground"><LinkIcon className="h-4 w-4"/>Relationships</h3>
-                    <ScrollArea className="h-[200px] w-full">
-                        <ul className="space-y-2 pr-4">
-                        {conceptsMap.relationships.map((rel, index) => (
-                            <li key={`rel-${index}`} className="text-sm flex items-center flex-wrap gap-1 p-2 border rounded-md bg-background dark:bg-background/50 border-border/50">
-                              <Badge variant="secondary" className="shrink-0">{rel.from}</Badge>
-                              <span className="text-muted-foreground mx-1 text-xs">&rarr;</span>
-                              <Badge variant="outline" className="italic text-xs shrink-0 border-border/50 text-muted-foreground">{rel.type}</Badge>
-                              <span className="text-muted-foreground mx-1 text-xs">&rarr;</span>
-                              <Badge variant="secondary" className="shrink-0">{rel.to}</Badge>
-                            </li>
-                        ))}
-                        </ul>
-                    </ScrollArea>
-                  </div>
-                )}
+                 {/* Key Topics Section */}
+                 {keyTopics && keyTopics.length > 0 && (
+                     <div className="bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
+                       <h3 className="text-base font-semibold mb-2 flex items-center gap-2 text-secondary-foreground"><Tags className="h-4 w-4"/>Key Topics</h3>
+                       <div className="flex flex-wrap gap-2">
+                         {keyTopics.map((topic, index) => (
+                           <Badge key={`keytopic-${index}`} variant="secondary">{topic}</Badge>
+                         ))}
+                       </div>
+                     </div>
+                 )}
              </TabsContent>
-          )}
+           )}
 
-          {/* Code Insight Tab */}
+
+          {/* Code Insight Tab Content */}
            {hasCodeAnalysisContent && codeAnalysis && (
              <TabsContent value="code" className="space-y-4">
                 {/* Concept Learned Section */}
                 {codeAnalysis.learnedConcept && (
-                    <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
-                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-secondary-foreground">
+                    <div className="bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
+                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2 text-secondary-foreground">
                         <BrainCircuit className="h-4 w-4 text-primary"/>Concept Learned / Problem Solved
                     </h3>
-                    <p className="whitespace-pre-wrap text-sm text-foreground/90">{codeAnalysis.learnedConcept}</p>
+                    {/* Ensure text is visible */}
+                    <p className="whitespace-pre-wrap text-sm text-foreground">{codeAnalysis.learnedConcept}</p>
                     </div>
                 )}
                 {/* Code Snippet Section */}
                 {codeAnalysis.finalCodeSnippet && (
                     <Card className="bg-muted/10 dark:bg-muted/20 overflow-hidden border border-border/50">
                     <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/30 border-b border-border/50">
-                        <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
-                        <CardTitle className="text-sm font-medium text-foreground">Final Code Example</CardTitle>
-                        {codeAnalysis.codeLanguage && <Badge variant="secondary" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
+                         {/* Improved layout for header */}
+                         <div className="flex justify-between items-start md:items-center flex-col md:flex-row gap-1">
+                            <CardTitle className="text-base font-medium text-foreground flex items-center gap-2">
+                                <Code className="h-4 w-4"/> Final Code Example
+                            </CardTitle>
+                            {codeAnalysis.codeLanguage && <Badge variant="secondary" className="text-xs">{codeAnalysis.codeLanguage}</Badge>}
                         </div>
                     </CardHeader>
                     <CardContent className="p-0">
@@ -456,21 +432,21 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                     </CardContent>
                     </Card>
                 )}
-                {/* Fallback messages with better spacing */}
+                {/* Fallback message - Ensure it doesn't show if one part exists */}
                 {!codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
                     <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md mt-4">
-                    No code concepts or snippets were identified.
+                    No specific code concept or snippet identified in this conversation.
                     </div>
                 )}
              </TabsContent>
            )}
 
-           {/* Study Notes Tab - Editable */}
+           {/* Study Notes Tab Content - Editable */}
            {hasStudyNotesContent && (
-                <TabsContent value="notes">
+                <TabsContent value="notes" className="space-y-4">
                     <Card className="bg-secondary/10 dark:bg-secondary/20 border border-border/50">
-                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                            <CardTitle className="text-md flex items-center gap-2 text-secondary-foreground">
+                        <CardHeader className="p-3 pb-2 flex flex-row items-center justify-between">
+                            <CardTitle className="text-base flex items-center gap-2 text-secondary-foreground">
                                 <Lightbulb className="h-4 w-4" /> Study Notes
                             </CardTitle>
                             {!isEditingNotes ? (
@@ -491,7 +467,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                 </div>
                             )}
                         </CardHeader>
-                        <CardContent className="p-4"> {/* Added padding to content area */}
+                        <CardContent className="p-3"> {/* Added padding to content area */}
                             {isEditingNotes ? (
                                 <Textarea
                                     value={editedNotes}
@@ -500,19 +476,71 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                     className="w-full text-sm bg-background dark:bg-background/80 border-input"
                                     placeholder="Enter study notes here..."
                                 />
-                             ) : (editedNotes && editedNotes.trim().length > 0) || originalNotesExist ? (
+                             ) : (editedNotes && editedNotes.trim().length > 0) ? (
                                 <StudyNotesRenderer content={editedNotes} />
                             ) : (
-                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
+                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation. You can add some.</p>
                             )}
                         </CardContent>
                     </Card>
                 </TabsContent>
             )}
+
+            {/* Concept Map Tab Content - Optional */}
+            {hasConceptsContent && conceptsMap && (
+                <TabsContent value="concepts" className="space-y-4">
+                    {conceptsMap.subtopics && conceptsMap.subtopics.length > 0 && (
+                        <div className="bg-muted/30 dark:bg-muted/10 p-3 rounded-md border border-border/50">
+                        <h3 className="text-base font-semibold mb-2 flex items-center gap-2 text-muted-foreground"><ListTree className="h-4 w-4"/>Subtopics</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {conceptsMap.subtopics.map((subtopic, index) => (
+                            <Badge key={`subtopic-${index}`} variant="outline" className="border-muted-foreground/50 text-muted-foreground">{subtopic}</Badge>
+                            ))}
+                        </div>
+                        </div>
+                    )}
+                    {conceptsMap.concepts && conceptsMap.concepts.length > 0 && (
+                        <div className="bg-muted/30 dark:bg-muted/10 p-3 rounded-md border border-border/50">
+                        <h3 className="text-base font-semibold mb-2 flex items-center gap-2 text-muted-foreground"><BrainCircuit className="h-4 w-4"/>Key Concepts</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {conceptsMap.concepts.map((concept, index) => (
+                            <Badge key={`concept-${index}`} variant="outline" className="border-accent text-accent">{concept}</Badge>
+                            ))}
+                        </div>
+                        </div>
+                    )}
+                    {conceptsMap.relationships && conceptsMap.relationships.length > 0 && (
+                        <div className="bg-muted/30 dark:bg-muted/10 p-3 rounded-md border border-border/50">
+                        <h3 className="text-base font-semibold mb-3 flex items-center gap-2 text-muted-foreground"><LinkIcon className="h-4 w-4"/>Relationships</h3>
+                        <ScrollArea className="h-[200px] w-full">
+                            <ul className="space-y-2 pr-4">
+                            {conceptsMap.relationships.map((rel, index) => (
+                                <li key={`rel-${index}`} className="text-sm flex items-center flex-wrap gap-1 p-2 border rounded-md bg-background dark:bg-background/50 border-border/50">
+                                <Badge variant="secondary" className="shrink-0">{rel.from}</Badge>
+                                <span className="text-muted-foreground mx-1 text-xs">&rarr;</span>
+                                <Badge variant="outline" className="italic text-xs shrink-0 border-border/50 text-muted-foreground">{rel.type}</Badge>
+                                <span className="text-muted-foreground mx-1 text-xs">&rarr;</span>
+                                <Badge variant="secondary" className="shrink-0">{rel.to}</Badge>
+                                </li>
+                            ))}
+                            </ul>
+                        </ScrollArea>
+                        </div>
+                    )}
+                    {/* Fallback if concept map data is present but empty */}
+                    {(!conceptsMap.subtopics || conceptsMap.subtopics.length === 0) &&
+                     (!conceptsMap.concepts || conceptsMap.concepts.length === 0) &&
+                     (!conceptsMap.relationships || conceptsMap.relationships.length === 0) && (
+                        <p className="text-muted-foreground text-sm italic">No concept map data generated.</p>
+                    )}
+                </TabsContent>
+            )}
+
+
         </Tabs>
       </CardContent>
       {/* Save All Insights Button */}
-      <CardFooter className="border-t border-border pt-6">
+      <CardFooter className="border-t border-border pt-4">
         <Button
             onClick={handleSaveAllInsights}
             disabled={isSaving || !anythingToSave}
