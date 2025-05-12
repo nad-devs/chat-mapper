@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useActionState } from 'react';
+import { useActionState, startTransition } from 'react'; // Import startTransition
 import { ChatInputForm } from '@/components/chat-input-form';
 import { TopicDisplay } from '@/components/topic-display';
 import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions';
@@ -66,11 +66,13 @@ export default function Home() {
     setRememberedTopics([]);
     setReviewTopics([]);
 
-    // Call the server action using FormData
+    // Call the server action using FormData within a transition
     const formData = new FormData();
     formData.append('conversationText', analysisResults.originalConversationText);
     // formData.append('count', '5'); // Optional: Specify number of questions
-    generateQuizAction(formData);
+    startTransition(() => { // Wrap the action call in startTransition
+        generateQuizAction(formData);
+    });
   };
 
    // --- Effect to handle Quiz Generation Action Results ---
