@@ -7,17 +7,15 @@ import { mapConcepts, MapConceptsInput, MapConceptsOutput } from '@/ai/flows/map
 import { analyzeCodeConceptAndFinalExample, AnalyzeCodeOutput } from '@/ai/flows/analyze-code';
 import { generateStudyNotes, GenerateStudyNotesOutput } from '@/ai/flows/generate-study-notes';
 import { generateQuizTopics, GenerateQuizTopicsOutput, QuizTopic } from '@/ai/flows/generate-quiz-topics';
-import { db } from '@/lib/firebase'; // Import Firestore instance
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
+// Removed Firestore imports: import { db } from '@/lib/firebase';
+// Removed Firestore imports: import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const processConversationInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
 });
 
-// Update the result type to include studyNotes and category
+// Update the result type to remove Firestore-specific fields (id, timestamp)
 export type ProcessedConversationResult = {
-  id?: string; // Add ID for Firestore documents
-  timestamp?: any; // For Firestore timestamp (used only for saving)
   originalConversationText?: string; // Keep original text for quiz generation etc.
   topicsSummary: string;
   keyTopics: string[];
@@ -35,7 +33,7 @@ export async function processConversation(
 ): Promise<ProcessedConversationResult> {
   console.log('[Action] processConversation started.');
 
-   // Define a default error state structure
+   // Define a default error state structure (without id/timestamp)
   const defaultErrorState = (message: string): ProcessedConversationResult => ({
     topicsSummary: '',
     keyTopics: [],
@@ -43,7 +41,6 @@ export async function processConversation(
     conceptsMap: null,
     codeAnalysis: null,
     studyNotes: null,
-    // Try to keep original text if available in form data, otherwise empty string
     originalConversationText: formData.get('conversationText') as string ?? prevState?.originalConversationText ?? '',
     error: message,
   });
@@ -57,7 +54,6 @@ export async function processConversation(
     if (!validatedFields.success) {
       const errorMsg = validatedFields.error.flatten().fieldErrors.conversationText?.[0] || 'Invalid input.';
       console.error('[Action] Validation failed:', errorMsg);
-      // Use defaultErrorState to ensure structure
       return defaultErrorState(errorMsg);
     }
 
@@ -70,7 +66,6 @@ export async function processConversation(
     let conceptsMap: MapConceptsOutput | null = null;
 
     console.log('[Action] Starting AI flows...');
-    // Run summary, code analysis, and study notes flow concurrently
     const [summaryResult, codeAnalysisResult, studyNotesResult] = await Promise.allSettled([
       summarizeTopics({ conversation: conversationText }),
       analyzeCodeConceptAndFinalExample({ conversationText: conversationText }),
@@ -82,11 +77,9 @@ export async function processConversation(
     const getResultOrNull = <T>(settledResult: PromiseSettledResult<T | null>, flowName: string): T | null => {
         if (settledResult.status === 'fulfilled') {
             console.log(`[Action] ${flowName} flow fulfilled.`);
-            // Handle potential undefined/null return from fulfilled promise
             return settledResult.value !== undefined ? settledResult.value : null;
         } else {
             console.error(`[Action] Error in ${flowName} flow:`, settledResult.reason);
-            // Log the reason, but still return null to indicate failure for this part
             return null;
         }
     };
@@ -96,8 +89,6 @@ export async function processConversation(
     codeAnalysisData = getResultOrNull(codeAnalysisResult, 'Analyze Code');
     studyNotesData = getResultOrNull(studyNotesResult, 'Generate Study Notes');
 
-    // Check for critical failure (e.g., summary failed or returned invalid data)
-    // Ensure summaryData and its essential fields are present
     if (!summaryData || typeof summaryData.summary !== 'string' || !Array.isArray(summaryData.keyTopics)) {
         console.error("[Action] Critical failure: Could not summarize topics or summary data is incomplete/invalid.");
         let errorMsg = 'Could not summarize topics. Analysis incomplete.';
@@ -105,101 +96,93 @@ export async function processConversation(
         else if (typeof summaryData.summary !== 'string') errorMsg = 'Summarize Topics flow returned invalid summary.';
         else if (!Array.isArray(summaryData.keyTopics)) errorMsg = 'Summarize Topics flow returned invalid key topics.';
 
-        // Return default error state, potentially preserving other results if needed for debugging/partial display
          return {
             ...defaultErrorState(errorMsg),
-            // Preserve other results if they succeeded, useful for partial display/debugging
             codeAnalysis: codeAnalysisData,
             studyNotes: studyNotesData?.studyNotes ?? null,
-            conceptsMap: conceptsMap, // conceptsMap is likely null here anyway
-            originalConversationText: conversationText, // Keep the original text
+            conceptsMap: conceptsMap,
+            originalConversationText: conversationText,
          };
     }
 
-    // Destructure only after validation
     const { summary: topicsSummary, keyTopics, category } = summaryData;
     console.log('[Action] Topics summarized successfully. Category:', category);
 
-    const codeAnalysis: AnalyzeCodeOutput | null = codeAnalysisData; // Null if failed
-    const studyNotes: string | null = studyNotesData?.studyNotes ?? null; // Null if failed or empty
+    const codeAnalysis: AnalyzeCodeOutput | null = codeAnalysisData;
+    const studyNotes: string | null = studyNotesData?.studyNotes ?? null;
     console.log('[Action] Code analysis and study notes processed (may be null/empty).');
 
     // Step 3: Map Concepts (depends on summary)
     console.log('[Action] Starting Concept Mapping...');
-    // Ensure topicsSummary is a non-empty string before proceeding
     if (topicsSummary && typeof topicsSummary === 'string' && topicsSummary.trim().length > 0) {
         const mapInput: MapConceptsInput = {
-            mainTopic: topicsSummary, // Use the generated summary
+            mainTopic: topicsSummary,
             conversationText: conversationText,
         };
         try {
-            // Add specific try/catch for mapConcepts as it runs sequentially after others
             const mapResult = await mapConcepts(mapInput);
-            conceptsMap = mapResult; // Assign result if successful
+            conceptsMap = mapResult;
             console.log('[Action] Concepts mapped successfully.');
         } catch (mapError: any) {
             console.error("[Action] Error mapping concepts:", mapError);
-            // Don't make this a fatal error, just log and set conceptsMap to null
             conceptsMap = null;
         }
     } else {
         console.log('[Action] Skipping Concept Mapping due to missing or empty summary.');
-        conceptsMap = null; // Ensure it's null if skipped
+        conceptsMap = null;
     }
 
 
-    // --- Prepare data for saving ---
-    // Ensure all parts conform to the expected types before saving/returning
-    const analysisResultToSave: Omit<ProcessedConversationResult, 'id' | 'error' | 'timestamp'> = {
+    // --- Prepare final result ---
+    // This object matches the updated ProcessedConversationResult type
+    const analysisResult: ProcessedConversationResult = {
       originalConversationText: conversationText,
-      topicsSummary: topicsSummary || "", // Ensure string
-      keyTopics: keyTopics || [], // Ensure array
-      category: category ?? null, // Ensure null if undefined/null
-      conceptsMap: conceptsMap, // Already handled null case
-      codeAnalysis: codeAnalysis, // Already handled null case
-      studyNotes: studyNotes ?? null, // Ensure null if undefined/null
+      topicsSummary: topicsSummary || "",
+      keyTopics: keyTopics || [],
+      category: category ?? null,
+      conceptsMap: conceptsMap,
+      codeAnalysis: codeAnalysis,
+      studyNotes: studyNotes ?? null,
+      error: null, // Set error to null for success
     };
 
-    // --- Save to Firestore ---
+    console.log("[Action] AI processing complete. Returning results.");
+    return analysisResult; // Return the result directly
+
+    // --- Removed Save to Firestore section ---
+    /*
     try {
         console.log('[Action] Saving analysis to Firestore...');
         const docRef = await addDoc(collection(db, "analyses"), {
             ...analysisResultToSave,
-            timestamp: serverTimestamp() // Add server timestamp
+            timestamp: serverTimestamp()
         });
         console.log("[Action] Document written with ID: ", docRef.id);
-
-        // Return successful result including saved data and ID
          return {
             ...analysisResultToSave,
-            id: docRef.id, // Include the new document ID
-            error: null, // Explicitly set error to null on success
+            id: docRef.id,
+            error: null,
         };
-
     } catch (dbError: any) {
         console.error("[Action] Error adding document to Firestore: ", dbError);
-         // Return the processed data but indicate DB save error
          return {
             ...analysisResultToSave,
-            id: undefined, // Indicate no ID was assigned
+            id: undefined,
             error: 'AI processing succeeded, but failed to save results to database. Error: ' + (dbError.message || 'Unknown DB error'),
         };
     }
-
+    */
 
   } catch (error: any) {
-    // Catch any unexpected errors during the entire process
     console.error('[Action] Unexpected top-level error processing conversation:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred during processing.';
-    // Log stack for debugging on the server
     console.error(error.stack);
-    // Return a structured error response
     return defaultErrorState(`AI processing failed: ${errorMessage}`);
   }
 }
 
 
-// --- Existing Action for Generating Quiz Topics (No DB interaction needed here yet) ---
+// --- Existing Action for Generating Quiz Topics (No DB interaction) ---
 
 const generateQuizInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
@@ -235,21 +218,20 @@ export async function generateQuizTopicsAction(
     const result = await generateQuizTopics({ conversationText, count });
     console.log('[Action] generateQuizTopics flow completed. Result:', result);
 
-    // Check if result is null (flow failed) or topics array is missing/null
     if (!result || !result.quizTopics) {
         const errorMsg = !result ? "Failed to generate quiz topics from AI." : "AI returned invalid quiz topics structure.";
         console.error(`[Action] ${errorMsg}`);
         return { quizTopics: null, error: errorMsg };
     }
 
-     // Success case (even if quizTopics array is empty)
      return { quizTopics: result.quizTopics, error: null };
 
    } catch(error: any) {
      console.error('[Action] Unexpected error generating quiz topics:', error);
      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred during quiz generation.';
-     console.error(error.stack); // Log stack trace
+     console.error(error.stack);
      return { quizTopics: null, error: `Quiz generation failed: ${errorMessage}` };
    }
 
 }
+

@@ -11,16 +11,16 @@ import { QuizDisplay } from '@/components/quiz-display';
 import type { QuizTopic } from '@/ai/flows/generate-quiz-topics';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Loader2, Brain, History, ArrowLeft } from 'lucide-react'; // Added History, ArrowLeft
+import { Loader2, Brain, ArrowLeft } from 'lucide-react'; // Removed History icon
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { CheckCircle, AlertCircle } from 'lucide-react';
-import Link from 'next/link'; // Import Link
+// Removed Link import as it's no longer needed for history
 
 // Initial state for quiz generation action
 const initialQuizState: GenerateQuizResult = { quizTopics: null, error: null };
 
-// Define initial analysis state explicitly to include category
+// Define initial analysis state explicitly (without id/timestamp)
 const initialAnalysisState: ProcessedConversationResult = {
     topicsSummary: '',
     keyTopics: [],
@@ -68,15 +68,15 @@ export default function Home() {
     console.log('[Page] Analysis Processing complete. Results:', processedResults);
     setAnalysisResults(processedResults);
     setIsLoadingAnalysis(false);
-    // Show toast message based on result (including DB save status)
-    if (processedResults?.error?.includes('failed to save results')) {
-       toast({ title: "Warning", description: processedResults.error, variant: "default" }); // Use default variant for warning
-    } else if (processedResults?.error) {
+    // Show toast message based on result
+    // Removed check for DB save error as saving is removed
+    if (processedResults?.error) {
        toast({ title: "Error", description: processedResults.error, variant: "destructive" });
     } else if (processedResults) {
-       toast({ title: "Analysis Complete", description: "Conversation analyzed and saved successfully." });
+       // Changed toast message as saving is removed
+       toast({ title: "Analysis Complete", description: "Conversation analyzed successfully." });
     }
-  }, [toast]); // Added toast dependency
+  }, [toast]);
 
   // --- Handler for Starting Quiz Generation ---
   const handleStartQuizGeneration = () => {
@@ -136,13 +136,14 @@ export default function Home() {
   const handleNotesUpdate = React.useCallback((updatedNotes: string) => {
     setAnalysisResults(prevResults => {
       if (!prevResults) return null;
-      // TODO: If implementing editing saved notes, update Firestore here
+      // Note: This only updates the local state for the current session.
+      // Changes are not persisted without a database.
       return {
         ...prevResults,
         studyNotes: updatedNotes,
       };
     });
-     toast({ title: "Notes Updated", description: "Your study notes have been saved locally for this session." }); // Clarify local save
+     toast({ title: "Notes Updated", description: "Your study notes have been updated locally for this session." });
   }, [toast]);
 
   const handleRestartQuizFlow = () => {
@@ -155,7 +156,8 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-gradient-to-br from-background to-secondary/10">
       <div className="w-full max-w-3xl space-y-8">
         <header className="text-center relative">
-            {/* History Button */}
+             {/* Removed History Button */}
+             {/*
              <div className="absolute top-0 right-0">
                 <Button variant="outline" size="sm" asChild>
                     <Link href="/history">
@@ -163,6 +165,7 @@ export default function Home() {
                     </Link>
                 </Button>
             </div>
+            */}
 
              <svg width="60" height="60" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="inline-block mb-2 text-accent">
                 <path d="M17.9998 19C17.8898 19.91 17.4898 20.74 16.8998 21.33C15.7398 22.49 13.9498 22.79 12.4098 22.11C12.1498 22 11.8598 22 11.5898 22.11C10.0498 22.79 8.25979 22.49 7.09979 21.33C6.50979 20.74 6.10979 19.91 5.99979 19H17.9998Z" stroke="currentColor" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
@@ -205,25 +208,7 @@ export default function Home() {
                  </div>
             </>
         )}
-         {/* Show analysis result even if there was a DB save error */}
-         {!isLoadingAnalysis && analysisResults && analysisResults.error?.includes('failed to save') && !isQuizzing && !showQuizSummary && (
-             <>
-                {/* Display error message specific to DB save */}
-                 <div className="text-center text-orange-600 mt-6 p-4 border border-orange-500/50 bg-orange-500/10 rounded-md">
-                    Analysis Error: {analysisResults.error}
-                 </div>
-                <TopicDisplay results={analysisResults} onNotesUpdate={handleNotesUpdate} />
-                 <div className="text-center mt-6">
-                    <Button
-                        onClick={handleStartQuizGeneration}
-                        disabled={isGeneratingQuiz || isQuizActionPending}
-                    >
-                        {(isGeneratingQuiz || isQuizActionPending) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Brain className="mr-2 h-4 w-4" />}
-                        {(isGeneratingQuiz || isQuizActionPending) ? 'Generating Quiz...' : 'Start Recall Quiz'}
-                    </Button>
-                 </div>
-            </>
-         )}
+         {/* Removed specific handling for DB save error as it's no longer possible */}
 
 
         {/* Display Quiz Interface */}
@@ -246,11 +231,11 @@ export default function Home() {
         {/* Initial State / Error Message (hide if loading, quizzing, or showing summary) */}
         {!isLoadingAnalysis && !analysisResults && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-muted-foreground mt-6">
-              Enter a conversation above and click Analyze to see the results and save them.
+              Enter a conversation above and click Analyze to see the results.
             </div>
         )}
-         {/* Display critical analysis error (hide if loading, quizzing, showing summary, or if it's just a DB save error) */}
-         {!isLoadingAnalysis && analysisResults?.error && !analysisResults.error.includes('failed to save') && !isQuizzing && !showQuizSummary && (
+         {/* Display critical analysis error (hide if loading, quizzing, or showing summary) */}
+         {!isLoadingAnalysis && analysisResults?.error && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-red-500 mt-6 p-4 border border-red-500/50 bg-red-500/10 rounded-md">
               Analysis Error: {analysisResults.error}
             </div>
@@ -357,3 +342,4 @@ function QuizSummary({ remembered, review, onRestart }: QuizSummaryProps) {
         </Card>
     );
 }
+

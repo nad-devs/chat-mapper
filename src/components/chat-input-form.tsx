@@ -18,6 +18,7 @@ interface ChatInputFormProps {
   isProcessing: boolean; // Add prop to know if processing is happening
 }
 
+// Updated initial state type to match ProcessedConversationResult without DB fields
 const initialState: ProcessedConversationResult = {
     topicsSummary: '',
     keyTopics: [],
@@ -49,7 +50,8 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
     if (!isActionPending && state !== initialState) {
         console.log('[Form Effect] Action state received:', state);
 
-        if (state.error && !state.error.includes('failed to save')) { // Only show critical errors via toast here
+        // Show only critical errors via toast here
+        if (state.error) {
           console.error('[Form Effect] Action returned an error:', state.error);
           toast({
             title: "Error",
@@ -74,7 +76,8 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
     <Card className="w-full">
       <CardHeader>
         <CardTitle>Input Conversation</CardTitle>
-        <CardDescription>Paste your full ChatGPT conversation below. Analysis results will be saved automatically.</CardDescription>
+        {/* Update description as results are no longer saved automatically */}
+        <CardDescription>Paste your full ChatGPT conversation below to analyze it.</CardDescription>
       </CardHeader>
       <form
         ref={formRef}
@@ -94,11 +97,11 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
                 aria-describedby="conversation-error"
                 className="group-disabled:opacity-50" // Style when disabled
                 />
-                {state?.error && <p id="conversation-error" className="text-sm font-medium text-destructive">{state.error}</p>}
+                {/* Display error state from action if available */}
+                {state?.error && !isActionPending && <p id="conversation-error" className="text-sm font-medium text-destructive pt-1">{state.error}</p>}
             </div>
             </CardContent>
             <CardFooter>
-                {/* Pass disabled state to SubmitButton */}
                  <Button type="submit" disabled={isDisabled}>
                     {isDisabled ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     {isDisabled ? 'Processing...' : 'Analyze Conversation'}
@@ -109,3 +112,4 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
     </Card>
   );
 }
+
