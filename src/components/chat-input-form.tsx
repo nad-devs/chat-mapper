@@ -19,6 +19,7 @@ interface ChatInputFormProps {
 
 const initialState: ProcessedConversationResult = {
     topicsSummary: '',
+    keyTopics: [], // Initialize keyTopics
     conceptsMap: null,
     error: null,
 };
@@ -46,7 +47,7 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
         variant: "destructive",
       })
       onProcessingComplete(null); // Clear previous results on error
-    } else if (state?.topicsSummary || state?.conceptsMap) {
+    } else if (state?.topicsSummary || state?.conceptsMap || (state?.keyTopics && state.keyTopics.length > 0)) { // Check for keyTopics as well
        onProcessingComplete(state);
        // Optionally reset form after successful submission
        // formRef.current?.reset();

@@ -18,10 +18,12 @@ const SummarizeTopicsInputSchema = z.object({
 });
 export type SummarizeTopicsInput = z.infer<typeof SummarizeTopicsInputSchema>;
 
+// Updated output schema to potentially include a list of topics or a more structured summary
 const SummarizeTopicsOutputSchema = z.object({
-  topics: z
+  summary: z
     .string()
-    .describe('A summary of the main topics discussed in the conversation.'),
+    .describe('A concise paragraph summarizing the main themes and key takeaways of the conversation.'),
+  keyTopics: z.array(z.string()).describe('A list of the most important topics discussed.')
 });
 export type SummarizeTopicsOutput = z.infer<typeof SummarizeTopicsOutputSchema>;
 
@@ -31,14 +33,22 @@ export async function summarizeTopics(input: SummarizeTopicsInput): Promise<Summ
 
 const summarizeTopicsPrompt = ai.definePrompt({
   name: 'summarizeTopicsPrompt',
-  model: 'googleai/gemini-1.5-flash-latest', // Added model
+  model: 'googleai/gemini-1.5-flash-latest',
   input: {schema: SummarizeTopicsInputSchema},
   output: {schema: SummarizeTopicsOutputSchema},
-  prompt: `You are an expert at identifying the topics discussed in a conversation.
+  prompt: `You are an expert AI assistant skilled in analyzing and summarizing conversations.
 
-  Summarize the topics discussed in the following conversation:
+  Your task is to carefully read the following ChatGPT conversation and provide a high-quality summary.
 
-  {{{conversation}}}`,
+  Conversation:
+  {{{conversation}}}
+
+  Instructions:
+  1. Identify the main themes and overarching goals discussed in the conversation.
+  2. Extract the most important and distinct topics covered. List these as 'keyTopics'.
+  3. Write a concise paragraph ('summary') that synthesizes these themes and topics, capturing the essence and key takeaways of the discussion. Focus on clarity and brevity.
+  4. Ensure the output matches the requested JSON format with 'summary' and 'keyTopics' fields.
+`,
 });
 
 const summarizeTopicsFlow = ai.defineFlow(
@@ -49,6 +59,10 @@ const summarizeTopicsFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await summarizeTopicsPrompt(input);
-    return output!;
+    // Ensure output is not null before returning
+    if (!output) {
+        throw new Error("AI failed to generate a summary.");
+    }
+    return output;
   }
 );

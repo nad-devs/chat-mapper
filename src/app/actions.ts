@@ -10,7 +10,8 @@ const processConversationInputSchema = z.object({
 });
 
 export type ProcessedConversationResult = {
-  topicsSummary: string;
+  topicsSummary: string; // Keep this as the main paragraph summary
+  keyTopics: string[]; // Add the list of key topics
   conceptsMap: MapConceptsOutput | null;
   error?: string | null;
 };
@@ -26,6 +27,7 @@ export async function processConversation(
   if (!validatedFields.success) {
     return {
         topicsSummary: '',
+        keyTopics: [],
         conceptsMap: null,
         error: validatedFields.error.flatten().fieldErrors.conversationText?.[0] || 'Invalid input.',
     };
@@ -36,21 +38,23 @@ export async function processConversation(
   try {
     // Step 1: Summarize Topics
     const summaryOutput: SummarizeTopicsOutput = await summarizeTopics({ conversation: conversationText });
-    const topicsSummary = summaryOutput.topics;
+    const topicsSummary = summaryOutput.summary; // Use the paragraph summary
+    const keyTopics = summaryOutput.keyTopics; // Get the key topics list
 
-    if (!topicsSummary) {
-        return { topicsSummary: '', conceptsMap: null, error: 'Could not summarize topics.' };
+    if (!topicsSummary || !keyTopics) {
+        return { topicsSummary: '', keyTopics: [], conceptsMap: null, error: 'Could not summarize topics.' };
     }
 
-    // Step 2: Map Concepts using the summary as the main topic
+    // Step 2: Map Concepts using the summary paragraph as the main topic context
     const mapInput: MapConceptsInput = {
-      mainTopic: topicsSummary, // Use the generated summary as the main topic for concept mapping
+      mainTopic: topicsSummary, // Use the generated summary paragraph as the main topic for concept mapping
       conversationText: conversationText,
     };
     const conceptsMap: MapConceptsOutput = await mapConcepts(mapInput);
 
     return {
       topicsSummary,
+      keyTopics,
       conceptsMap,
       error: null,
     };
@@ -59,6 +63,7 @@ export async function processConversation(
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return {
         topicsSummary: '',
+        keyTopics: [],
         conceptsMap: null,
         error: `AI processing failed: ${errorMessage}`,
     };

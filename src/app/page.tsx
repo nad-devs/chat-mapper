@@ -44,6 +44,7 @@ export default function Home() {
         />
 
         {isLoading && <LoadingSkeleton />}
+        {/* Pass the full results object which now includes keyTopics */}
         {results && !isLoading && <TopicDisplay results={results} />}
 
       </div>
@@ -57,6 +58,13 @@ function LoadingSkeleton() {
     <div className="w-full mt-6 space-y-4">
         <Skeleton className="h-12 w-1/3" />
         <Skeleton className="h-32 w-full" />
+         {/* Add skeleton for key topics */}
+        <Skeleton className="h-8 w-1/4 mt-4" />
+        <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-6 w-28" />
+        </div>
         <Skeleton className="h-12 w-1/3 mt-4" />
         <div className="space-y-2">
             <Skeleton className="h-8 w-full" />

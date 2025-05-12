@@ -11,17 +11,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { FileText, Link as LinkIcon, ListTree, Shapes } from 'lucide-react'; // Import relevant icons
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags } from 'lucide-react'; // Added Tags icon
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
 export function TopicDisplay({ results }: TopicDisplayProps) {
-  const { topicsSummary, conceptsMap } = results;
+  const { topicsSummary, keyTopics, conceptsMap } = results; // Destructure keyTopics
 
-  if (!topicsSummary && !conceptsMap) {
-    return null; // Don't render anything if there are no results
+  // Check if there's anything to display
+  if (!topicsSummary && !(keyTopics && keyTopics.length > 0) && !conceptsMap) {
+    return null;
   }
 
   return (
@@ -33,17 +34,34 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
       <CardContent>
         <Accordion type="multiple" defaultValue={['summary', 'concepts']} className="w-full">
 
-          {/* Summary Section */}
-          {topicsSummary && (
+          {/* Summary & Key Topics Section */}
+          {(topicsSummary || (keyTopics && keyTopics.length > 0)) && (
             <AccordionItem value="summary">
               <AccordionTrigger className="text-lg font-semibold hover:no-underline">
                 <div className="flex items-center gap-2">
                    <FileText className="h-5 w-5 text-secondary-foreground" />
-                   <span>Topic Summary</span>
+                   <span>Topic Summary & Key Topics</span>
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="pt-2 text-base bg-secondary/30 p-4 rounded-md">
-                 <p className="text-secondary-foreground">{topicsSummary}</p>
+              <AccordionContent className="pt-2 space-y-4">
+                 {/* Summary Paragraph */}
+                 {topicsSummary && (
+                    <div className="bg-secondary/30 p-4 rounded-md">
+                      <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Summary</h3>
+                      <p className="text-secondary-foreground">{topicsSummary}</p>
+                    </div>
+                 )}
+                 {/* Key Topics List */}
+                 {keyTopics && keyTopics.length > 0 && (
+                    <div className="bg-secondary/30 p-4 rounded-md">
+                      <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><Tags className="h-4 w-4 text-secondary-foreground"/>Key Topics</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {keyTopics.map((topic, index) => (
+                          <Badge key={`keytopic-${index}`} variant="default">{topic}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                 )}
               </AccordionContent>
             </AccordionItem>
           )}
