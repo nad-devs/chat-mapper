@@ -1,20 +1,21 @@
-
 'use server';
 
 import { z } from 'zod';
 import { summarizeTopics, SummarizeTopicsOutput } from '@/ai/flows/summarize-topics';
 import { mapConcepts, MapConceptsInput, MapConceptsOutput } from '@/ai/flows/map-concepts';
-import { analyzeCodeExamples, AnalyzeCodeOutput, CodeExample } from '@/ai/flows/analyze-code'; // Import new flow
+// Import the updated flow and its output type
+import { analyzeCodeConceptAndFinalExample, AnalyzeCodeOutput } from '@/ai/flows/analyze-code';
 
 const processConversationInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
 });
 
+// Update the result type to reflect the simplified code analysis output
 export type ProcessedConversationResult = {
   topicsSummary: string;
   keyTopics: string[];
   conceptsMap: MapConceptsOutput | null;
-  codeAnalysis: AnalyzeCodeOutput | null; // Add code analysis results
+  codeAnalysis: AnalyzeCodeOutput | null; // Uses the updated AnalyzeCodeOutput type
   error?: string | null;
 };
 
@@ -22,7 +23,7 @@ export async function processConversation(
   prevState: ProcessedConversationResult | null,
   formData: FormData
 ): Promise<ProcessedConversationResult> {
-  console.log('[Action] processConversation started.'); // Log start
+  console.log('[Action] processConversation started.');
 
   const validatedFields = processConversationInputSchema.safeParse({
     conversationText: formData.get('conversationText'),
@@ -30,7 +31,7 @@ export async function processConversation(
 
   if (!validatedFields.success) {
     const errorMsg = validatedFields.error.flatten().fieldErrors.conversationText?.[0] || 'Invalid input.';
-    console.error('[Action] Validation failed:', errorMsg); // Log validation error
+    console.error('[Action] Validation failed:', errorMsg);
     return {
         topicsSummary: '',
         keyTopics: [],
@@ -41,39 +42,53 @@ export async function processConversation(
   }
 
   const { conversationText } = validatedFields.data;
-  console.log('[Action] Validation successful. Conversation text length:', conversationText.length); // Log success
+  console.log('[Action] Validation successful. Conversation text length:', conversationText.length);
 
   try {
-    console.log('[Action] Starting AI flows...'); // Log AI start
-    // Run flows concurrently where possible
+    console.log('[Action] Starting AI flows...');
+    // Run summary and the *new* code analysis flow concurrently
     const [summaryResult, codeAnalysisResult] = await Promise.allSettled([
       summarizeTopics({ conversation: conversationText }),
-      analyzeCodeExamples({ conversationText: conversationText })
+      // Call the updated code analysis flow
+      analyzeCodeConceptAndFinalExample({ conversationText: conversationText })
     ]);
-    console.log('[Action] Summary and Code Analysis results settled:', { summaryResult, codeAnalysisResult }); // Log settlement
+    console.log('[Action] Summary and Code Analysis results settled:', { summaryResult, codeAnalysisResult });
 
     // Handle Summary Result
     if (summaryResult.status === 'rejected' || !summaryResult.value?.summary || !summaryResult.value?.keyTopics) {
       const reason = summaryResult.status === 'rejected' ? summaryResult.reason : 'Missing data';
-      console.error("[Action] Error summarizing topics:", reason); // Log summary error
-      return { topicsSummary: '', keyTopics: [], conceptsMap: null, codeAnalysis: null, error: 'Could not summarize topics.' };
+      console.error("[Action] Error summarizing topics:", reason);
+      // Ensure codeAnalysis is initialized even if summary fails early
+      let codeAnalysis: AnalyzeCodeOutput | null = null;
+      if (codeAnalysisResult.status === 'fulfilled') {
+           codeAnalysis = codeAnalysisResult.value;
+      } else if (codeAnalysisResult.status === 'rejected') {
+           console.error("[Action] Error analyzing code (during summary error):", codeAnalysisResult.reason);
+      }
+      return { topicsSummary: '', keyTopics: [], conceptsMap: null, codeAnalysis: codeAnalysis, error: 'Could not summarize topics.' };
     }
     const { summary: topicsSummary, keyTopics } = summaryResult.value;
-    console.log('[Action] Topics summarized successfully.'); // Log summary success
+    console.log('[Action] Topics summarized successfully.');
 
-    // Handle Code Analysis Result (allow it to fail gracefully)
+    // Handle Code Analysis Result
     let codeAnalysis: AnalyzeCodeOutput | null = null;
     if (codeAnalysisResult.status === 'fulfilled' && codeAnalysisResult.value) {
-       codeAnalysis = codeAnalysisResult.value;
-       console.log('[Action] Code analyzed successfully.'); // Log code analysis success
+       // Check if the returned analysis has content, otherwise treat as null
+       if (codeAnalysisResult.value.learnedConcept || codeAnalysisResult.value.finalCodeSnippet) {
+           codeAnalysis = codeAnalysisResult.value;
+           console.log('[Action] Code analyzed successfully.');
+       } else {
+           console.log('[Action] Code analysis returned empty results.');
+           codeAnalysis = null; // Treat empty results as null for simpler display logic
+       }
     } else if (codeAnalysisResult.status === 'rejected') {
-       console.error("[Action] Error analyzing code:", codeAnalysisResult.reason); // Log code analysis error
-       codeAnalysis = { codeExamples: [] }; // Or null, depending on desired behavior
+       console.error("[Action] Error analyzing code:", codeAnalysisResult.reason);
+       codeAnalysis = null; // Set to null on error
     }
 
 
     // Step 3: Map Concepts (depends on summary)
-    console.log('[Action] Starting Concept Mapping...'); // Log concept map start
+    console.log('[Action] Starting Concept Mapping...');
     const mapInput: MapConceptsInput = {
       mainTopic: topicsSummary, // Use the generated summary paragraph
       conversationText: conversationText,
@@ -82,25 +97,23 @@ export async function processConversation(
     let conceptsMap: MapConceptsOutput | null = null;
     try {
         conceptsMap = await mapConcepts(mapInput);
-        console.log('[Action] Concepts mapped successfully.'); // Log concept map success
+        console.log('[Action] Concepts mapped successfully.');
     } catch (mapError) {
-        console.error("[Action] Error mapping concepts:", mapError); // Log concept map error
-        // Don't block if concept mapping fails
-        conceptsMap = null; // Or initialize with empty arrays if preferred
+        console.error("[Action] Error mapping concepts:", mapError);
+        conceptsMap = null;
     }
 
 
-    console.log('[Action] processConversation finished successfully.'); // Log overall success
+    console.log('[Action] processConversation finished successfully.');
     return {
       topicsSummary,
       keyTopics,
       conceptsMap,
-      codeAnalysis, // Include code analysis results
+      codeAnalysis, // Include the potentially null or simplified code analysis results
       error: null,
     };
   } catch (error) {
-    // Catch any unexpected errors during Promise.all or other steps
-    console.error('[Action] Unexpected error processing conversation:', error); // Log unexpected error
+    console.error('[Action] Unexpected error processing conversation:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return {
         topicsSummary: '',
@@ -111,4 +124,3 @@ export async function processConversation(
     };
   }
 }
-

@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -86,12 +85,16 @@ function LoadingSkeleton() {
             <Skeleton className="h-8 w-5/6" />
         </div>
       </div>
-      {/* Code Analysis Skeleton */}
+      {/* Updated Code Analysis Skeleton */}
       <div>
-        <Skeleton className="h-8 w-1/3 mb-3" />
+        <Skeleton className="h-8 w-1/3 mb-3" /> {/* "Code Insight" title skeleton */}
         <div className="space-y-4">
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-20 w-full" />
+           {/* Skeleton for Learned Concept */}
+          <Skeleton className="h-6 w-1/2 mb-2" /> {/* Concept title skeleton */}
+          <Skeleton className="h-16 w-full" /> {/* Concept description skeleton */}
+           {/* Skeleton for Final Code Snippet */}
+          <Skeleton className="h-6 w-1/4 mb-2" /> {/* Code title skeleton */}
+          <Skeleton className="h-40 w-full" /> {/* Code block skeleton */}
         </div>
       </div>
     </div>
