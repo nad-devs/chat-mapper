@@ -15,14 +15,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea'; // Import Textarea
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2 } from 'lucide-react';
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X } from 'lucide-react'; // Import Edit, Save, X
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
-// Simple Markdown-like renderer
+// Simple Markdown-like renderer (No changes needed here)
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
@@ -100,6 +101,22 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const { topicsSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
   const defaultTopicName = "Untitled Conversation";
 
+  // State for editing Summary
+  const [isEditingSummary, setIsEditingSummary] = React.useState(false);
+  const [editedSummary, setEditedSummary] = React.useState(topicsSummary || '');
+
+  // State for editing Study Notes
+  const [isEditingNotes, setIsEditingNotes] = React.useState(false);
+  const [editedNotes, setEditedNotes] = React.useState(studyNotes || '');
+
+  // Update local state if the results prop changes (e.g., new analysis)
+  React.useEffect(() => {
+    setEditedSummary(topicsSummary || '');
+    setEditedNotes(studyNotes || '');
+    setIsEditingSummary(false); // Reset editing state on new analysis
+    setIsEditingNotes(false);
+  }, [topicsSummary, studyNotes]);
+
   React.useEffect(() => {
     if (saveState) {
       if (saveState.success && saveState.info) {
@@ -112,25 +129,26 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
 
   const handleSaveAllInsights = () => {
-    const topicNameToSave = topicsSummary || codeAnalysis?.learnedConcept || defaultTopicName;
-    const categoryToSave = category;
+    // Use the ORIGINAL AI-generated data for saving, regardless of local edits
+    const topicNameToSave = results.topicsSummary || results.codeAnalysis?.learnedConcept || defaultTopicName;
+    const categoryToSave = results.category;
 
     const formData = new FormData();
     formData.append('topicName', topicNameToSave);
     if (categoryToSave) {
       formData.append('category', categoryToSave);
     }
-    if (topicsSummary && topicsSummary.trim().length > 0) {
-      formData.append('summaryContent', topicsSummary);
+    if (results.topicsSummary && results.topicsSummary.trim().length > 0) {
+      formData.append('summaryContent', results.topicsSummary);
     }
-    if (codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0) {
-      formData.append('codeSnippetContent', codeAnalysis.finalCodeSnippet);
-      if (codeAnalysis.codeLanguage) {
-        formData.append('codeLanguage', codeAnalysis.codeLanguage);
+    if (results.codeAnalysis?.finalCodeSnippet && results.codeAnalysis.finalCodeSnippet.trim().length > 0) {
+      formData.append('codeSnippetContent', results.codeAnalysis.finalCodeSnippet);
+      if (results.codeAnalysis.codeLanguage) {
+        formData.append('codeLanguage', results.codeAnalysis.codeLanguage);
       }
     }
-    if (studyNotes && studyNotes.trim().length > 0) {
-      formData.append('studyNotesContent', studyNotes);
+    if (results.studyNotes && results.studyNotes.trim().length > 0) {
+      formData.append('studyNotesContent', results.studyNotes);
     }
 
     // Check if there's anything to save
@@ -144,7 +162,44 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     });
   };
 
-  const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
+  // Handlers for Summary Edit
+  const handleEditSummary = () => {
+    setEditedSummary(topicsSummary || ''); // Reset to original on starting edit
+    setIsEditingSummary(true);
+  };
+
+  const handleSaveSummary = () => {
+    // NOTE: This only saves the edit locally for display in this component.
+    // It does NOT update the original `results` prop or what gets saved by "Save All".
+    // If you wanted to persist edits, you'd need to update the parent state or call a specific update action.
+    // For now, we'll just update the local display:
+    // setAnalysisResults(prev => ({...prev, topicsSummary: editedSummary})); // Example if updating parent state
+    setIsEditingSummary(false);
+    // We'll let the displayed content use editedSummary while not editing now.
+  };
+
+  const handleCancelSummary = () => {
+    setEditedSummary(topicsSummary || ''); // Revert to original
+    setIsEditingSummary(false);
+  };
+
+  // Handlers for Study Notes Edit
+  const handleEditNotes = () => {
+    setEditedNotes(studyNotes || ''); // Reset to original on starting edit
+    setIsEditingNotes(true);
+  };
+
+  const handleSaveNotes = () => {
+    setIsEditingNotes(false);
+    // Display will now use the editedNotes state
+  };
+
+  const handleCancelNotes = () => {
+    setEditedNotes(studyNotes || ''); // Revert to original
+    setIsEditingNotes(false);
+  };
+
+  const hasOverviewContent = !!editedSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
   const hasStudyNotesContent = true; // Study notes tab is always shown
@@ -155,11 +210,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     { value: 'code', label: 'Code Insight', icon: Code, hasContent: hasCodeAnalysisContent },
     { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
   ].filter(tab => tab.hasContent);
-  
-  const notesExist = studyNotes && studyNotes.trim().length > 0;
-  const anythingToSave = (topicsSummary && topicsSummary.trim().length > 0) ||
-                         (codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0) ||
-                         (studyNotes && studyNotes.trim().length > 0);
+
+  const notesExist = editedNotes && editedNotes.trim().length > 0;
+  // Check original results for savable content
+  const anythingToSave = (results.topicsSummary && results.topicsSummary.trim().length > 0) ||
+                         (results.codeAnalysis?.finalCodeSnippet && results.codeAnalysis.finalCodeSnippet.trim().length > 0) ||
+                         (results.studyNotes && results.studyNotes.trim().length > 0);
 
 
   if (availableTabs.length === 0 && !notesExist) {
@@ -186,7 +242,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     <Card className="w-full mt-6">
       <CardHeader>
         <CardTitle>Conversation Analysis</CardTitle>
-        <CardDescription>Explore the insights extracted from the conversation.</CardDescription>
+        <CardDescription>Explore the insights extracted from the conversation. You can edit the summary and notes locally.</CardDescription>
          {category && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm">
                 <Folder className="h-3 w-3" /> {category}
@@ -208,26 +264,57 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
           {hasOverviewContent && (
             <TabsContent value="overview" className="space-y-4">
-                {topicsSummary && (
-                    <Card className="bg-secondary/30 dark:bg-secondary/10 relative border border-secondary/50 dark:border-secondary/20">
-                        <CardHeader>
-                             <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Summary</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-foreground dark:text-foreground/90">{topicsSummary}</p>
-                        </CardContent>
-                    </Card>
+                {/* Summary Section */}
+                <Card className="bg-secondary/30 dark:bg-secondary/10 relative border border-secondary/50 dark:border-secondary/20">
+                    <CardHeader className="pb-2">
+                        <div className="flex justify-between items-center">
+                            <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Summary</CardTitle>
+                            {!isEditingSummary ? (
+                                <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7">
+                                    <Edit className="h-4 w-4" />
+                                    <span className="sr-only">Edit Summary</span>
+                                </Button>
+                            ) : (
+                                <div className="flex gap-1">
+                                    <Button variant="ghost" size="icon" onClick={handleSaveSummary} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                                        <Save className="h-4 w-4" />
+                                        <span className="sr-only">Save Summary</span>
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={handleCancelSummary} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                                        <X className="h-4 w-4" />
+                                        <span className="sr-only">Cancel Edit Summary</span>
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {isEditingSummary ? (
+                            <Textarea
+                                value={editedSummary}
+                                onChange={(e) => setEditedSummary(e.target.value)}
+                                rows={4}
+                                className="w-full text-sm bg-background dark:bg-background/80"
+                            />
+                        ) : (
+                            <p className="text-foreground dark:text-foreground/90 text-sm">
+                                {editedSummary || <span className="italic text-muted-foreground">No summary generated.</span>}
+                            </p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Key Topics Section */}
+                {keyTopics && keyTopics.length > 0 && (
+                    <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-secondary/50 dark:border-secondary/20">
+                      <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><Tags className="h-4 w-4 text-secondary-foreground"/>Key Topics</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {keyTopics.map((topic, index) => (
+                          <Badge key={`keytopic-${index}`} variant="secondary">{topic}</Badge>
+                        ))}
+                      </div>
+                    </div>
                 )}
-              {keyTopics && keyTopics.length > 0 && (
-                <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-secondary/50 dark:border-secondary/20">
-                  <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><Tags className="h-4 w-4 text-secondary-foreground"/>Key Topics</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {keyTopics.map((topic, index) => (
-                      <Badge key={`keytopic-${index}`} variant="secondary">{topic}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
             </TabsContent>
           )}
 
@@ -279,7 +366,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                {codeAnalysis.learnedConcept && (
                  <div className="bg-primary/10 dark:bg-primary/5 p-4 rounded-md border border-primary/20 dark:border-primary/30">
                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground/90"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
-                   <p className="whitespace-pre-wrap text-foreground dark:text-foreground/80">{codeAnalysis.learnedConcept}</p>
+                   <p className="whitespace-pre-wrap text-foreground dark:text-foreground/80 text-sm">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
@@ -314,6 +401,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
              </TabsContent>
            )}
 
+           {/* Study Notes Section */}
            {hasStudyNotesContent && (
                 <TabsContent value="notes">
                     <Card className="bg-secondary/10 dark:bg-secondary/20 border border-secondary/50 dark:border-secondary/30">
@@ -323,11 +411,35 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                 <Lightbulb className="h-4 w-4 text-secondary-foreground" />
                                 Study Notes
                                 </CardTitle>
+                                {!isEditingNotes ? (
+                                    <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7">
+                                        <Edit className="h-4 w-4" />
+                                        <span className="sr-only">Edit Study Notes</span>
+                                    </Button>
+                                ) : (
+                                    <div className="flex gap-1">
+                                        <Button variant="ghost" size="icon" onClick={handleSaveNotes} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                                            <Save className="h-4 w-4" />
+                                            <span className="sr-only">Save Study Notes</span>
+                                        </Button>
+                                        <Button variant="ghost" size="icon" onClick={handleCancelNotes} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                                            <X className="h-4 w-4" />
+                                            <span className="sr-only">Cancel Edit Study Notes</span>
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         </CardHeader>
                         <CardContent>
-                            {notesExist ? (
-                                <SimpleMarkdownRenderer content={studyNotes} />
+                            {isEditingNotes ? (
+                                <Textarea
+                                    value={editedNotes}
+                                    onChange={(e) => setEditedNotes(e.target.value)}
+                                    rows={10}
+                                    className="w-full text-sm bg-background dark:bg-background/80"
+                                />
+                            ) : notesExist ? (
+                                <SimpleMarkdownRenderer content={editedNotes} />
                             ) : (
                                 <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
                             )}
@@ -351,5 +463,3 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     </Card>
   );
 }
-
-    
