@@ -154,7 +154,8 @@ export function TopicDisplay({
     console.log("[TopicDisplay] Save button clicked, calling onSaveNotes prop.");
     onSaveNotes();
     // Exit edit mode after triggering save. Parent toast will confirm success/failure.
-    setIsEditingNotes(false);
+    // Keep edit mode active or inactive based on current state, don't force exit?
+    // setIsEditingNotes(false); // Let's not exit edit mode automatically on save trigger
   };
 
   // Handler for Cancel - revert changes and exit edit mode
@@ -177,8 +178,8 @@ export function TopicDisplay({
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  // Study notes tab should be available if notes exist OR if currently editing
-  const hasStudyNotesContent = !!studyNotes || isEditingNotes; // Keep showing tab if editing empty notes
+  // Study notes tab should always be available, either showing content or allowing adding/editing.
+  const hasStudyNotesContent = true; // Always show the notes tab
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
@@ -187,8 +188,8 @@ export function TopicDisplay({
     { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
   ].filter(tab => tab.hasContent); // Filter out tabs with no content initially
 
-  // If no tabs have content initially, and not editing, show a message
-  if (availableTabs.length === 0 && !isEditingNotes) {
+  // If no tabs have content initially (except notes), show a message
+  if (availableTabs.length <= 1 && !isEditingNotes && !(studyNotes && studyNotes.trim().length > 0)) {
     return (
       <Card className="w-full mt-6">
         <CardHeader>
@@ -200,18 +201,50 @@ export function TopicDisplay({
            )}
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">No significant topics, concepts, code insights, or study notes found in the provided conversation.</p>
+          <p className="text-muted-foreground">No significant topics, concepts, or code insights found in the provided conversation.</p>
              {/* Allow starting edit even if notes are null/empty */}
-             <Button variant="outline" size="sm" onClick={handleEditNotesClick} className="mt-4">
-                 <Edit className="h-4 w-4 mr-1" /> Add/Edit Notes
-             </Button>
+             <div className="mt-4 flex justify-between items-center bg-secondary/10 p-4 rounded-md border border-secondary/20">
+                <h3 className="text-md font-semibold flex items-center gap-2">
+                    <Lightbulb className="h-4 w-4 text-secondary-foreground" />
+                    Study Notes
+                </h3>
+                <Button variant="ghost" size="sm" onClick={handleEditNotesClick}>
+                    <Edit className="h-4 w-4 mr-1" /> Add/Edit Notes
+                </Button>
+            </div>
+             {isEditingNotes && (
+                <div className="mt-4 space-y-3 bg-secondary/10 p-4 rounded-md border border-secondary/20">
+                     <Textarea
+                        value={editedNotes}
+                        onChange={handleTextareaChange} // Update local state and notify parent
+                        rows={15}
+                        className="text-sm"
+                        placeholder="Add your study notes..."
+                        disabled={isSavingNotes} // Disable textarea while saving
+                    />
+                    <div className="flex justify-end gap-2">
+                         <Button variant="outline" size="sm" onClick={handleCancelEditClick} disabled={isSavingNotes}>
+                            <XCircle className="h-4 w-4 mr-1" /> Cancel
+                        </Button>
+                        <Button
+                            variant="default"
+                            size="sm"
+                            onClick={handleSaveNotesClick} // Trigger save via parent
+                            disabled={isSavingNotes || !hasPendingNoteChanges} // Disable if saving or no changes
+                        >
+                            {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+                            {isSavingNotes ? 'Saving...' : 'Save Notes'}
+                        </Button>
+                    </div>
+                </div>
+            )}
         </CardContent>
       </Card>
     );
   }
 
-  // Set default tab to the first available one, or 'notes' if editing started from empty
-  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : (isEditingNotes ? 'notes' : 'overview');
+  // Set default tab to the first available one
+  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : 'notes'; // Default to notes if others are empty
 
   return (
     <Card className="w-full mt-6">
@@ -237,13 +270,6 @@ export function TopicDisplay({
                      </TabsTrigger>
                  ) : null
              ))}
-             {/* Ensure Notes tab is renderable if it wasn't initially but editing started */}
-             {!availableTabs.some(t => t.value === 'notes') && isEditingNotes && (
-                 <TabsTrigger key="notes" value="notes">
-                     <Lightbulb className="mr-2 h-4 w-4" />
-                     Study Notes
-                 </TabsTrigger>
-             )}
           </TabsList>
 
           {/* Overview Tab */}
@@ -355,8 +381,7 @@ export function TopicDisplay({
            )}
 
            {/* Study Notes Tab */}
-           {/* Render this tab if it has content OR if we are currently editing */}
-           {(hasStudyNotesContent || isEditingNotes) && (
+           {hasStudyNotesContent && (
                 <TabsContent value="notes">
                     <div className="bg-secondary/10 p-4 rounded-md border border-secondary/20">
                         <div className="flex justify-between items-center mb-3">
@@ -367,9 +392,22 @@ export function TopicDisplay({
                             {/* Control buttons */}
                             <div className="flex gap-2">
                                 {!isEditingNotes && (
+                                    <>
+                                    {/* Persistent Save Button */}
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={handleSaveNotesClick} // Trigger save via parent
+                                        disabled={isSavingNotes || (!hasPendingNoteChanges && !(editedNotes && editedNotes.trim().length > 0))} // Disable if saving OR no changes AND notes are empty
+                                        title={hasPendingNoteChanges ? "Save pending changes" : "Save current notes"}
+                                    >
+                                        {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+                                        {isSavingNotes ? 'Saving...' : 'Save Notes'}
+                                    </Button>
                                     <Button variant="ghost" size="sm" onClick={handleEditNotesClick}>
                                         <Edit className="h-4 w-4 mr-1" /> Edit
                                     </Button>
+                                    </>
                                 )}
                                 {isEditingNotes && (
                                     <>
@@ -386,19 +424,6 @@ export function TopicDisplay({
                                             {isSavingNotes ? 'Saving...' : 'Save Notes'}
                                         </Button>
                                     </>
-                                )}
-                                {/* Show Save button outside edit mode if changes are pending but not yet saved */}
-                                {!isEditingNotes && hasPendingNoteChanges && (
-                                    <Button
-                                        variant="default"
-                                        size="sm"
-                                        onClick={handleSaveNotesClick} // Trigger save via parent
-                                        disabled={isSavingNotes}
-                                        title="Save pending changes" // Tooltip for clarity
-                                    >
-                                        {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-                                        {isSavingNotes ? 'Saving...' : 'Save Pending Notes'}
-                                    </Button>
                                 )}
                             </div>
                         </div>
@@ -435,5 +460,3 @@ export function TopicDisplay({
     </Card>
   );
 }
-
-    
