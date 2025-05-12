@@ -10,42 +10,45 @@ import { db } from '@/lib/firebase'; // Import Firestore db instance
 import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore'; // Import Firestore functions
 
 // --- Firestore Data Structure ---
-// Simplifying the types slightly, as we primarily save notes now.
-// The content type can still be flexible if needed later.
-type LearningEntryType = "study-notes" | "summary" | "code-analysis"; // Retain types, but only use 'study-notes' initially
+// Only saving study notes for now.
+type LearningEntryType = "study-notes"; // Simplified
 
 // Input type for saving (timestamp is added by Firestore)
 interface LearningEntryInput {
   topicName: string; // Derived from category or summary or a default
   type: LearningEntryType;
-  content: string | AnalyzeCodeOutput | SummarizeTopicsOutput; // Flexible content based on type
+  content: string; // Content is always string for study notes
 }
 
 // Type representing a saved document in Firestore (includes ID and Timestamp)
 export interface LearningEntry extends LearningEntryInput {
     id: string;
-    timestamp: Timestamp;
+    timestamp: Timestamp; // Note: Timestamp object is not serializable for client components directly
 }
 
-// --- Server Action to Save Entry (remains the same, used by initial save and update) ---
-// This is the core function to write to Firestore. It is called by other actions.
+// --- Server Action to Save Entry (only for study notes now) ---
+// This is the core function to write study notes to Firestore.
 async function saveLearningEntry(entryData: LearningEntryInput): Promise<string | null | "skipped_empty"> {
+    // Validate input specific to study notes
+    if (entryData.type !== "study-notes") {
+        console.error("[Action/DB] Invalid type provided for saving. Only 'study-notes' is supported currently.");
+        return null;
+    }
+     if (typeof entryData.content !== 'string') {
+        console.error("[Action/DB] Invalid content provided for saving study notes (must be a string).");
+        return null;
+    }
+
     try {
         console.log(`[Action/DB] Attempting to save learning entry of type: ${entryData.type} for topic: ${entryData.topicName}`);
-        // Basic validation before saving
+        // Basic validation for topic name
         if (!entryData.topicName || typeof entryData.topicName !== 'string' || entryData.topicName.trim() === '') {
-            // Assign a default topic name if it's invalid/missing
             console.warn("[Action/DB] Invalid or missing topicName provided for saving. Using 'Untitled Analysis'.");
             entryData.topicName = 'Untitled Analysis';
         }
-         if (!entryData.type || typeof entryData.type !== 'string') {
-            throw new Error("Invalid type provided for saving.");
-        }
-        if (entryData.content === undefined || entryData.content === null) {
-             throw new Error("Invalid content provided for saving (null or undefined).");
-        }
-         // Additional check for empty string content (specifically for notes)
-         if (entryData.type === "study-notes" && typeof entryData.content === 'string' && entryData.content.trim() === '') {
+
+         // Check for empty string content before saving
+         if (entryData.content.trim() === '') {
             console.log(`[Action/DB] Skipping save for empty study notes for topic: ${entryData.topicName}`);
             return "skipped_empty"; // Indicate skipped save due to empty content
          }
@@ -72,16 +75,17 @@ const processConversationInputSchema = z.object({
 });
 
 // This result type is what the *action* returns to the *UI*.
-// It includes all generated data, regardless of whether it was saved.
+// It includes all generated data. Ensure all fields are serializable.
 export type ProcessedConversationResult = {
-  originalConversationText?: string;
-  topicsSummary: string | null; // Allow null if summarization fails
-  keyTopics: string[] | null; // Allow null
+  originalConversationText: string; // Changed from optional
+  topicsSummary: string | null;
+  keyTopics: string[] | null;
   category: string | null;
+  // Ensure MapConceptsOutput and AnalyzeCodeOutput only contain serializable data
   conceptsMap: MapConceptsOutput | null;
   codeAnalysis: AnalyzeCodeOutput | null;
   studyNotes: string | null;
-  error?: string | null; // Can contain AI or DB errors
+  error?: string | null;
 };
 
 
@@ -91,15 +95,15 @@ export async function processConversation(
 ): Promise<ProcessedConversationResult> {
   console.log('[Action] processConversation started.');
 
-   // Define a default error state structure more defensively
-  const defaultErrorState = (message: string, conversationText: string | undefined): ProcessedConversationResult => ({
+   // Define a default error state structure more defensively and ensure it's serializable
+  const defaultErrorState = (message: string, conversationText: string = ''): ProcessedConversationResult => ({
     topicsSummary: null,
     keyTopics: null,
     category: null,
     conceptsMap: null,
     codeAnalysis: null,
     studyNotes: null,
-    originalConversationText: conversationText ?? '', // Ensure it's a string
+    originalConversationText: conversationText, // Ensure it's always a string
     error: message || 'An unknown error occurred.', // Ensure message is a string
   });
 
@@ -113,7 +117,8 @@ export async function processConversation(
     if (!validatedFields.success) {
       const errorMsg = validatedFields.error.flatten().fieldErrors.conversationText?.[0] || 'Invalid input.';
       console.error('[Action] Validation failed:', errorMsg);
-      return defaultErrorState(errorMsg, conversationText);
+      // Ensure the returned state is serializable
+      return JSON.parse(JSON.stringify(defaultErrorState(errorMsg, conversationText)));
     }
 
     conversationText = validatedFields.data.conversationText;
@@ -124,11 +129,11 @@ export async function processConversation(
     let studyNotesData: GenerateStudyNotesOutput | null = null;
     let conceptsMap: MapConceptsOutput | null = null;
     let processingError: string | null = null; // Track AI/Processing errors
-    // Removed saveError as saving is now handled separately
 
     console.log('[Action] Starting AI flows...');
     let settledResults: PromiseSettledResult<any>[] = [];
     try {
+        // Only run flows needed for display and potential saving (notes)
         settledResults = await Promise.allSettled([
             summarizeTopics({ conversation: conversationText }),
             analyzeCodeConceptAndFinalExample({ conversationText: conversationText }),
@@ -138,7 +143,8 @@ export async function processConversation(
          const errorMsg = `Failed to initiate AI processing: ${aiError.message}`;
          console.error('[Action] Error during Promise.allSettled for AI flows:', aiError);
          console.error(aiError.stack);
-         return defaultErrorState(errorMsg, conversationText);
+         // Ensure the returned state is serializable
+         return JSON.parse(JSON.stringify(defaultErrorState(errorMsg, conversationText)));
     }
 
     console.log('[Action] AI flows results settled.');
@@ -146,6 +152,11 @@ export async function processConversation(
     const getResultOrNull = <T>(settledResult: PromiseSettledResult<T | null>, flowName: string): T | null => {
         if (settledResult.status === 'fulfilled') {
             console.log(`[Action] ${flowName} flow fulfilled successfully.`);
+            // Additional check for null/undefined return values from the flow itself
+             if (settledResult.value === null || settledResult.value === undefined) {
+                console.warn(`[Action] ${flowName} flow fulfilled but returned null/undefined.`);
+                return null;
+            }
             return settledResult.value;
         } else {
             const reason = settledResult.reason instanceof Error ? settledResult.reason.message : String(settledResult.reason);
@@ -181,6 +192,7 @@ export async function processConversation(
     console.log(`[Action] Code Analysis Concept: ${codeAnalysis?.learnedConcept ?? 'null'}`);
     console.log(`[Action] Study Notes: ${studyNotes ? studyNotes.substring(0, 50) + '...' : 'null'}`);
 
+    // Concept Mapping (depends on summary)
     if (topicsSummary && topicsSummary.trim().length > 0) {
          console.log('[Action] Starting Concept Mapping...');
          const mapInput: MapConceptsInput = {
@@ -206,13 +218,10 @@ export async function processConversation(
          conceptsMap = null;
      }
 
-    // --- REMOVED: Automatic saving of study notes ---
-    // Saving is now handled by `saveUpdatedNotesAction` triggered by the user.
-    // console.log("[Action] Skipping automatic saving of study notes.");
-
+    // --- NO Automatic Saving Here ---
+    // Saving is handled by `saveUpdatedNotesAction` triggered by the user.
 
     // --- Prepare final result for UI ---
-    // The final error only includes processing errors now.
     const finalError = processingError || null;
 
     const analysisResult: ProcessedConversationResult = {
@@ -220,23 +229,28 @@ export async function processConversation(
       topicsSummary: topicsSummary,
       keyTopics: keyTopics,
       category: category,
-      conceptsMap: conceptsMap,
-      codeAnalysis: codeAnalysis,
+      conceptsMap: conceptsMap, // Ensure this is serializable
+      codeAnalysis: codeAnalysis, // Ensure this is serializable
       studyNotes: studyNotes,
-      error: finalError, // Report processing error only
+      error: finalError,
     };
 
     console.log("[Action] ProcessConversation action complete. Returning results to UI.");
     if (finalError) {
         console.error(`[Action] Final error state being returned: ${finalError}`);
     }
-    // Ensure the returned object structure is always consistent and serializable
-    // Using JSON parse/stringify is a simple way to handle potential non-serializable values (like Timestamps if they were included)
+
+    // Force serialization before returning to catch potential issues
     try {
-        return JSON.parse(JSON.stringify(analysisResult));
-    } catch (stringifyError) {
+        // Stringify and parse to ensure only serializable data is returned
+        const serializableResult = JSON.parse(JSON.stringify(analysisResult));
+        console.log("[Action] Returning serializable analysis result.");
+        return serializableResult;
+    } catch (stringifyError: any) {
         console.error("[Action] Error stringifying analysis result:", stringifyError);
-        return defaultErrorState("Failed to serialize analysis results.", conversationText);
+        const errorMsg = `Failed to serialize analysis results: ${stringifyError.message}`;
+        // Return a valid error state, ensuring it's also serializable
+        return JSON.parse(JSON.stringify(defaultErrorState(errorMsg, conversationText)));
     }
 
 
@@ -247,21 +261,22 @@ export async function processConversation(
     if (error.stack) {
         console.error(error.stack);
     }
-    // Return a valid error state
-    return defaultErrorState(`Processing failed unexpectedly: ${errorMessage}`, conversationText);
+    // Return a valid, serializable error state
+    return JSON.parse(JSON.stringify(defaultErrorState(`Processing failed unexpectedly: ${errorMessage}`, conversationText)));
   }
 }
 
 
-// --- Existing Action for Generating Quiz Topics (No DB interaction needed here) ---
+// --- Action for Generating Quiz Topics (No DB interaction) ---
 
 const generateQuizInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
   count: z.number().optional(),
 });
 
+// Ensure GenerateQuizResult is serializable
 export type GenerateQuizResult = {
-  quizTopics: QuizTopic[] | null;
+  quizTopics: QuizTopic[] | null; // QuizTopic should be serializable
   error?: string | null;
 }
 
@@ -270,7 +285,12 @@ export async function generateQuizTopicsAction(
   formData: FormData
 ): Promise<GenerateQuizResult> {
    console.log('[Action] generateQuizTopicsAction started.');
-   let conversationText: string | undefined; // Define here for broader scope
+   let conversationText: string | undefined;
+
+   const defaultQuizErrorState = (message: string): GenerateQuizResult => ({
+       quizTopics: null,
+       error: message || 'An unknown error occurred during quiz generation.',
+   });
 
    try {
         conversationText = formData.get('conversationText') as string;
@@ -285,7 +305,7 @@ export async function generateQuizTopicsAction(
         if (!validatedFields.success) {
             const errorMsg = validatedFields.error.flatten().fieldErrors.conversationText?.[0] || 'Invalid input for quiz generation.';
             console.error('[Action] Quiz Validation failed:', errorMsg);
-            return { quizTopics: null, error: errorMsg };
+            return JSON.parse(JSON.stringify(defaultQuizErrorState(errorMsg)));
         }
 
         const { conversationText: validText, count: validCount } = validatedFields.data;
@@ -297,13 +317,13 @@ export async function generateQuizTopicsAction(
         if (!result || !result.quizTopics) {
             const errorMsg = !result ? "Failed to generate quiz topics from AI (null result)." : "AI returned no quiz topics or invalid structure.";
             console.warn(`[Action] ${errorMsg}`);
-            // Return null for topics but provide an informative message (not necessarily an error)
-            return { quizTopics: null, error: "Could not generate specific quiz topics from this conversation." };
+            // Return serializable state
+            return JSON.parse(JSON.stringify({ quizTopics: null, error: "Could not generate specific quiz topics from this conversation." }));
         }
 
         console.log(`[Action] Generated ${result.quizTopics.length} quiz topics.`);
-        // Return the topics (even if empty array) and no error
-        return { quizTopics: result.quizTopics, error: null };
+        // Return serializable topics (even if empty array) and no error
+        return JSON.parse(JSON.stringify({ quizTopics: result.quizTopics, error: null }));
 
    } catch(error: any) {
      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred during quiz generation.';
@@ -311,61 +331,79 @@ export async function generateQuizTopicsAction(
      if (error.stack) {
         console.error(error.stack);
      }
-     return { quizTopics: null, error: `Quiz generation failed: ${errorMessage}` };
+     // Return serializable error state
+     return JSON.parse(JSON.stringify(defaultQuizErrorState(`Quiz generation failed: ${errorMessage}`)));
    }
 }
 
- // --- Action to Save Updated Study Notes (Called by user clicking Save in UI) ---
+ // --- Action to Save Study Notes (Called by user clicking Save in UI) ---
 const saveNotesInputSchema = z.object({
     topicName: z.string().min(1, 'Topic name is required.'),
-    studyNotes: z.string(), // Allow empty notes (though saveLearningEntry might skip)
+    studyNotes: z.string(), // Allow empty notes (saveLearningEntry will skip)
 });
 
-export async function saveUpdatedNotesAction(
-    prevState: { success: boolean, error?: string | null } | null,
-    formData: FormData
-): Promise<{ success: boolean, error?: string | null }> {
-    console.log('[Action] saveUpdatedNotesAction started.');
-
-    const validatedFields = saveNotesInputSchema.safeParse({
-        topicName: formData.get('topicName'),
-        studyNotes: formData.get('studyNotes'),
-    });
-
-    if (!validatedFields.success) {
-        const errorMsg = validatedFields.error.flatten().fieldErrors.topicName?.[0]
-                      || validatedFields.error.flatten().fieldErrors.studyNotes?.[0]
-                      || 'Invalid input for saving notes.';
-        console.error('[Action/SaveNotes] Validation failed:', errorMsg);
-        return { success: false, error: errorMsg };
-    }
-
-    const { topicName, studyNotes } = validatedFields.data;
-
-    const notesEntryData: LearningEntryInput = {
-        topicName: topicName,
-        type: "study-notes",
-        content: studyNotes
-    };
-
-    const savedId = await saveLearningEntry(notesEntryData);
-
-    if (savedId === null) {
-        // Error occurred during save
-        const errorMsg = `Failed to save updated notes for topic "${topicName}" to the database. Check server logs for Firestore permissions or configuration issues.`;
-        console.error(`[Action/SaveNotes] ${errorMsg}`);
-        return { success: false, error: errorMsg };
-    } else if (savedId === "skipped_empty") {
-         // Saved skipped because notes were empty
-         console.log(`[Action/SaveNotes] Skipped saving empty notes for topic "${topicName}".`);
-         // Return success, maybe with an info message if desired?
-         // For now, just return success as no *error* occurred.
-         return { success: true, error: null }; // Or add an info field: { success: true, info: "Notes were empty, nothing saved."}
-    } else {
-        // Save successful
-        console.log(`[Action/SaveNotes] Successfully saved updated notes for topic "${topicName}" (ID: ${savedId})`);
-        return { success: true, error: null };
-    }
+// Ensure return type is serializable
+export type SaveNotesResult = {
+    success: boolean;
+    error?: string | null;
+    info?: string | null; // Optional info message (e.g., for skipped save)
 }
 
-    
+export async function saveUpdatedNotesAction(
+    prevState: SaveNotesResult | null,
+    formData: FormData
+): Promise<SaveNotesResult> {
+    console.log('[Action] saveUpdatedNotesAction started.');
+
+    const defaultSaveErrorState = (message: string): SaveNotesResult => ({
+        success: false,
+        error: message || 'An unknown error occurred while saving notes.',
+    });
+
+    try {
+        const validatedFields = saveNotesInputSchema.safeParse({
+            topicName: formData.get('topicName'),
+            studyNotes: formData.get('studyNotes'),
+        });
+
+        if (!validatedFields.success) {
+            const errorMsg = validatedFields.error.flatten().fieldErrors.topicName?.[0]
+                          || validatedFields.error.flatten().fieldErrors.studyNotes?.[0]
+                          || 'Invalid input for saving notes.';
+            console.error('[Action/SaveNotes] Validation failed:', errorMsg);
+            return JSON.parse(JSON.stringify(defaultSaveErrorState(errorMsg)));
+        }
+
+        const { topicName, studyNotes } = validatedFields.data;
+
+        const notesEntryData: LearningEntryInput = {
+            topicName: topicName,
+            type: "study-notes",
+            content: studyNotes
+        };
+
+        const savedId = await saveLearningEntry(notesEntryData);
+
+        if (savedId === null) {
+            // Error occurred during save
+            const errorMsg = `Failed to save notes for topic "${topicName}" to the database. Check server logs.`;
+            console.error(`[Action/SaveNotes] ${errorMsg}`);
+            return JSON.parse(JSON.stringify(defaultSaveErrorState(errorMsg)));
+        } else if (savedId === "skipped_empty") {
+             // Saved skipped because notes were empty
+             console.log(`[Action/SaveNotes] Skipped saving empty notes for topic "${topicName}".`);
+             return JSON.parse(JSON.stringify({ success: true, error: null, info: "Notes were empty, nothing saved." }));
+        } else {
+            // Save successful
+            console.log(`[Action/SaveNotes] Successfully saved notes for topic "${topicName}" (ID: ${savedId})`);
+            return JSON.parse(JSON.stringify({ success: true, error: null }));
+        }
+    } catch (error: any) {
+        const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred during note saving.';
+        console.error('[Action/SaveNotes] Unexpected top-level error:', errorMessage);
+        if (error.stack) {
+            console.error(error.stack);
+        }
+        return JSON.parse(JSON.stringify(defaultSaveErrorState(`Note saving failed unexpectedly: ${errorMessage}`)));
+    }
+}
