@@ -2,7 +2,8 @@
 'use client';
 
 import * as React from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react'; // Changed from react-dom to react and useFormState to useActionState
+import { useFormStatus } from 'react-dom'; // Import useFormStatus from react-dom
 import { processConversation, type ProcessedConversationResult } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -33,7 +34,7 @@ function SubmitButton() {
 }
 
 export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatInputFormProps) {
-  const [state, formAction] = useFormState(processConversation, initialState);
+  const [state, formAction] = useActionState(processConversation, initialState); // Renamed to useActionState
   const { toast } = useToast();
   const formRef = React.useRef<HTMLFormElement>(null);
 
@@ -86,3 +87,4 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
     </Card>
   );
 }
+
