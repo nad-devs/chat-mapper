@@ -6,6 +6,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter // Added CardFooter for potential use
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -111,9 +112,9 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 export function TopicDisplay({
     results,
     onNotesUpdate,
-    onSaveNotes,
-    isSavingNotes,
-    hasPendingNoteChanges
+    onSaveNotes, // Function to trigger save action in parent
+    isSavingNotes, // Boolean indicating if save is in progress
+    hasPendingNoteChanges // Boolean indicating local edits exist
 }: TopicDisplayProps) {
   // Use nullish coalescing for safer access
   const topicsSummary = results.topicsSummary ?? null;
@@ -121,46 +122,54 @@ export function TopicDisplay({
   const category = results.category ?? null;
   const conceptsMap = results.conceptsMap ?? null;
   const codeAnalysis = results.codeAnalysis ?? null;
-  const studyNotes = results.studyNotes ?? null;
+  const studyNotes = results.studyNotes ?? null; // The original notes from analysis
 
-  // State for editing study notes
+  // State for editing study notes - managed within this component
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
-  const [editedNotes, setEditedNotes] = React.useState(studyNotes || "");
+  const [editedNotes, setEditedNotes] = React.useState(studyNotes || ""); // Local copy for editing
 
-  // Update editedNotes if the underlying studyNotes prop changes (e.g., new analysis)
+  // Update local editedNotes if the underlying studyNotes prop changes (e.g., new analysis result)
   // Only update if not currently editing to avoid overwriting user changes
   React.useEffect(() => {
      if (!isEditingNotes) {
         setEditedNotes(studyNotes || "");
      }
-    // Ensure edit mode is exited on new analysis results (studyNotes prop change)
+    // Exit edit mode if new analysis results come in
     setIsEditingNotes(false);
+    // No need to call onNotesUpdate here, as this effect is for syncing incoming props
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyNotes]); // Dependency only on studyNotes prop
 
   // Handlers for editing notes
   const handleEditNotesClick = () => {
-    setEditedNotes(studyNotes || ""); // Reset to original on edit start
+    setEditedNotes(studyNotes || ""); // Reset local state to original on edit start
     setIsEditingNotes(true);
+    // Notify parent that no pending changes exist initially when starting edit
+    onNotesUpdate(studyNotes || "");
   };
 
   const handleSaveNotesClick = () => {
-    // The parent component (`page.tsx`) handles calling the save action.
-    // This component just notifies the parent via onSaveNotes.
-    // We also pass the *current* edited value back up via onNotesUpdate *before* triggering save.
-    // This ensures the parent state has the latest value when the save action is triggered.
-    onNotesUpdate(editedNotes);
+    // Call the callback provided by the parent to trigger the save action
+    // The parent (`page.tsx`) handles the actual action call
+    console.log("[TopicDisplay] Save button clicked, calling onSaveNotes prop.");
     onSaveNotes();
-    // Optionally exit edit mode immediately, or wait for save confirmation?
-    // Let's exit immediately for now, parent toast will confirm success/failure.
-    // If save fails, user might need to re-edit, handled by parent state.
-    //setIsEditingNotes(false); // Exit edit mode after triggering save
+    // Exit edit mode after triggering save. Parent toast will confirm success/failure.
+    setIsEditingNotes(false);
   };
 
   // Handler for Cancel - revert changes and exit edit mode
   const handleCancelEditClick = () => {
     setIsEditingNotes(false);
-    setEditedNotes(studyNotes || ""); // Revert local changes
-    onNotesUpdate(studyNotes || ""); // Revert parent state as well (important!)
+    const originalNotes = studyNotes || "";
+    setEditedNotes(originalNotes); // Revert local changes
+    onNotesUpdate(originalNotes); // Notify parent to clear the 'dirty' state
+    console.log("[TopicDisplay] Cancel edit clicked, reverting notes.");
+  };
+
+  // Handler for changes in the textarea during edit mode
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setEditedNotes(e.target.value); // Update local state
+      onNotesUpdate(e.target.value); // Notify parent about the change immediately
   };
 
 
@@ -169,16 +178,16 @@ export function TopicDisplay({
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
   // Study notes tab should be available if notes exist OR if currently editing
-  const hasStudyNotesContent = !!studyNotes || isEditingNotes;
+  const hasStudyNotesContent = !!studyNotes || isEditingNotes; // Keep showing tab if editing empty notes
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
     { value: 'concepts', label: 'Concept Map', icon: Shapes, hasContent: hasConceptsContent },
     { value: 'code', label: 'Code Insight', icon: Code, hasContent: hasCodeAnalysisContent },
     { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
-  ].filter(tab => tab.hasContent); // Filter out tabs with no content
+  ].filter(tab => tab.hasContent); // Filter out tabs with no content initially
 
-  // If no tabs have content, show a message (unless editing notes)
+  // If no tabs have content initially, and not editing, show a message
   if (availableTabs.length === 0 && !isEditingNotes) {
     return (
       <Card className="w-full mt-6">
@@ -192,19 +201,23 @@ export function TopicDisplay({
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">No significant topics, concepts, code insights, or study notes found in the provided conversation.</p>
+             {/* Allow starting edit even if notes are null/empty */}
+             <Button variant="outline" size="sm" onClick={handleEditNotesClick} className="mt-4">
+                 <Edit className="h-4 w-4 mr-1" /> Add/Edit Notes
+             </Button>
         </CardContent>
       </Card>
     );
   }
 
-  // Set default tab to the first available one, or 'notes' if only editing is active
-  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : (isEditingNotes ? 'notes' : 'overview'); // Fallback carefully
+  // Set default tab to the first available one, or 'notes' if editing started from empty
+  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : (isEditingNotes ? 'notes' : 'overview');
 
   return (
     <Card className="w-full mt-6">
       <CardHeader>
         <CardTitle>Conversation Analysis</CardTitle>
-        <CardDescription>Explore the insights extracted from the conversation.</CardDescription>
+        <CardDescription>Explore the insights extracted from the conversation. Study notes can be edited and saved.</CardDescription>
          {/* Display Category Badge if available */}
          {category && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm">
@@ -215,7 +228,7 @@ export function TopicDisplay({
       <CardContent>
         <Tabs defaultValue={defaultTabValue} className="w-full">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-4">
-            {/* Render only available tabs */}
+            {/* Render available tabs */}
              {availableTabs.map((tab) => (
                  tab ? ( // Check if tab is not null/undefined after filtering
                      <TabsTrigger key={tab.value} value={tab.value}>
@@ -224,8 +237,8 @@ export function TopicDisplay({
                      </TabsTrigger>
                  ) : null
              ))}
-             {/* Ensure Notes tab is always renderable if no other tabs are available but editing is true */}
-             {availableTabs.length === 0 && isEditingNotes && (
+             {/* Ensure Notes tab is renderable if it wasn't initially but editing started */}
+             {!availableTabs.some(t => t.value === 'notes') && isEditingNotes && (
                  <TabsTrigger key="notes" value="notes">
                      <Lightbulb className="mr-2 h-4 w-4" />
                      Study Notes
@@ -304,7 +317,7 @@ export function TopicDisplay({
              <TabsContent value="code" className="space-y-4">
                {codeAnalysis.learnedConcept && (
                  <div className="bg-primary/10 p-4 rounded-md border border-primary/20">
-                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-primary-foreground"/>Concept Learned / Problem Solved</h3>
+                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-primary"/>Concept Learned / Problem Solved</h3>
                    {/* Use standard foreground color for readability */}
                    <p className="whitespace-pre-wrap text-foreground">{codeAnalysis.learnedConcept}</p>
                  </div>
@@ -351,53 +364,50 @@ export function TopicDisplay({
                             <Lightbulb className="h-4 w-4 text-secondary-foreground" />
                             Study Notes
                             </h3>
-                            {/* Show Edit button only if NOT editing AND notes exist */}
-                            {!isEditingNotes && studyNotes && (
-                                <Button variant="ghost" size="sm" onClick={handleEditNotesClick}>
-                                    <Edit className="h-4 w-4 mr-1" /> Edit
-                                </Button>
-                            )}
-                             {/* Add Save/Cancel buttons in edit mode */}
-                             {isEditingNotes && (
-                                <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" onClick={handleCancelEditClick} disabled={isSavingNotes}>
-                                        <XCircle className="h-4 w-4 mr-1" /> Cancel
+                            {/* Control buttons */}
+                            <div className="flex gap-2">
+                                {!isEditingNotes && (
+                                    <Button variant="ghost" size="sm" onClick={handleEditNotesClick}>
+                                        <Edit className="h-4 w-4 mr-1" /> Edit
                                     </Button>
-                                    {/* Save Button shows spinner when saving */}
+                                )}
+                                {isEditingNotes && (
+                                    <>
+                                        <Button variant="outline" size="sm" onClick={handleCancelEditClick} disabled={isSavingNotes}>
+                                            <XCircle className="h-4 w-4 mr-1" /> Cancel
+                                        </Button>
+                                        <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={handleSaveNotesClick} // Trigger save via parent
+                                            disabled={isSavingNotes || !hasPendingNoteChanges} // Disable if saving or no changes
+                                        >
+                                            {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+                                            {isSavingNotes ? 'Saving...' : 'Save Notes'}
+                                        </Button>
+                                    </>
+                                )}
+                                {/* Show Save button outside edit mode if changes are pending but not yet saved */}
+                                {!isEditingNotes && hasPendingNoteChanges && (
                                     <Button
                                         variant="default"
                                         size="sm"
-                                        onClick={handleSaveNotesClick}
-                                        disabled={isSavingNotes || !hasPendingNoteChanges} // Disable if saving or no changes
+                                        onClick={handleSaveNotesClick} // Trigger save via parent
+                                        disabled={isSavingNotes}
+                                        title="Save pending changes" // Tooltip for clarity
                                     >
                                         {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-                                        {isSavingNotes ? 'Saving...' : 'Save Notes'}
+                                        {isSavingNotes ? 'Saving...' : 'Save Pending Notes'}
                                     </Button>
-                                </div>
-                            )}
-                             {/* Show "Saved" indicator briefly after successful save? Maybe just toast is enough. */}
-                             {/* Show Save button also if !isEditingNotes but hasPendingNoteChanges */}
-                             {!isEditingNotes && hasPendingNoteChanges && (
-                                 <Button
-                                     variant="default"
-                                     size="sm"
-                                     onClick={handleSaveNotesClick}
-                                     disabled={isSavingNotes}
-                                 >
-                                     {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-                                     {isSavingNotes ? 'Saving...' : 'Save Pending Notes'}
-                                 </Button>
-                             )}
+                                )}
+                            </div>
                         </div>
 
                          {isEditingNotes ? (
                             <div className="space-y-3">
                                 <Textarea
                                     value={editedNotes}
-                                    onChange={(e) => {
-                                        setEditedNotes(e.target.value);
-                                        onNotesUpdate(e.target.value); // Update parent immediately for hasPendingNoteChanges
-                                    }}
+                                    onChange={handleTextareaChange} // Update local state and notify parent
                                     rows={15}
                                     className="text-sm"
                                     placeholder="Edit your study notes..."
@@ -406,13 +416,14 @@ export function TopicDisplay({
                                 {/* Buttons are moved above */}
                             </div>
                         ) : (
-                             studyNotes ? (
+                             // Display rendered notes or a message if empty
+                             editedNotes && editedNotes.trim().length > 0 ? ( // Check editedNotes which reflects original or saved state
                                 <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">
-                                    <SimpleMarkdownRenderer content={studyNotes} />
+                                    <SimpleMarkdownRenderer content={editedNotes} />
                                 </div>
                             ) : (
                                 // Show message if no notes exist and not editing
-                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
+                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation. Click 'Edit' to add some.</p>
                             )
                         )}
                     </div>
@@ -425,3 +436,4 @@ export function TopicDisplay({
   );
 }
 
+    

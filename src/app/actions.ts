@@ -28,7 +28,8 @@ export interface LearningEntry extends LearningEntryInput {
 }
 
 // --- Server Action to Save Entry (remains the same, used by initial save and update) ---
-async function saveLearningEntry(entryData: LearningEntryInput): Promise<string | null> {
+// This is the core function to write to Firestore. It is called by other actions.
+async function saveLearningEntry(entryData: LearningEntryInput): Promise<string | null | "skipped_empty"> {
     try {
         console.log(`[Action/DB] Attempting to save learning entry of type: ${entryData.type} for topic: ${entryData.topicName}`);
         // Basic validation before saving
@@ -123,7 +124,7 @@ export async function processConversation(
     let studyNotesData: GenerateStudyNotesOutput | null = null;
     let conceptsMap: MapConceptsOutput | null = null;
     let processingError: string | null = null; // Track AI/Processing errors
-    let saveError: string | null = null; // Track DB save errors separately
+    // Removed saveError as saving is now handled separately
 
     console.log('[Action] Starting AI flows...');
     let settledResults: PromiseSettledResult<any>[] = [];
@@ -205,39 +206,14 @@ export async function processConversation(
          conceptsMap = null;
      }
 
-    // --- Save ONLY Study Notes to Firestore ---
-    const topicName = category || (topicsSummary && topicsSummary.trim().length > 0 ? topicsSummary.substring(0, 50) : null) || "Untitled Analysis";
-    console.log(`[Action] Determined topic name for saving notes: ${topicName}`);
+    // --- REMOVED: Automatic saving of study notes ---
+    // Saving is now handled by `saveUpdatedNotesAction` triggered by the user.
+    // console.log("[Action] Skipping automatic saving of study notes.");
 
-    // Prepare data for saving study notes - only if content exists
-    const notesEntryData: LearningEntryInput | null = (studyNotes && studyNotes.trim().length > 0) ? {
-        topicName: topicName,
-        type: "study-notes",
-        content: studyNotes // Store the notes string
-    } : null;
-
-    // Attempt to save only if notesEntryData is not null
-    if (notesEntryData) {
-        console.log(`[Action] Attempting to save study notes to Firestore for topic "${topicName}"...`);
-        const savedId = await saveLearningEntry(notesEntryData);
-        if (savedId === null) {
-            // Error occurred during save
-            saveError = `Failed to save study notes for topic "${topicName}" to the database. Check server logs for details. Firestore permissions or configuration might be incorrect.`;
-            console.error(`[Action/DB] ${saveError}`);
-        } else if (savedId === "skipped_empty") {
-            console.log(`[Action/DB] Skipped saving empty study notes for topic "${topicName}".`);
-            // Optionally set a different kind of message or no error
-            // saveError = "Study notes were generated but were empty, so not saved.";
-        } else {
-             console.log(`[Action/DB] Successfully saved study notes (ID: ${savedId}) for topic "${topicName}".`);
-        }
-    } else {
-        console.log("[Action] No study notes generated with content to save to Firestore initially.");
-    }
 
     // --- Prepare final result for UI ---
-    // Combine processing and save errors. Prioritize processing error if both exist.
-    const finalError = processingError || saveError || null;
+    // The final error only includes processing errors now.
+    const finalError = processingError || null;
 
     const analysisResult: ProcessedConversationResult = {
       originalConversationText: conversationText,
@@ -247,7 +223,7 @@ export async function processConversation(
       conceptsMap: conceptsMap,
       codeAnalysis: codeAnalysis,
       studyNotes: studyNotes,
-      error: finalError, // Report combined error
+      error: finalError, // Report processing error only
     };
 
     console.log("[Action] ProcessConversation action complete. Returning results to UI.");
@@ -256,7 +232,13 @@ export async function processConversation(
     }
     // Ensure the returned object structure is always consistent and serializable
     // Using JSON parse/stringify is a simple way to handle potential non-serializable values (like Timestamps if they were included)
-    return JSON.parse(JSON.stringify(analysisResult));
+    try {
+        return JSON.parse(JSON.stringify(analysisResult));
+    } catch (stringifyError) {
+        console.error("[Action] Error stringifying analysis result:", stringifyError);
+        return defaultErrorState("Failed to serialize analysis results.", conversationText);
+    }
+
 
   } catch (error: any) {
     // Catch any unexpected errors during the entire process
@@ -333,7 +315,7 @@ export async function generateQuizTopicsAction(
    }
 }
 
- // --- Action to Save Updated Study Notes (Remains the same) ---
+ // --- Action to Save Updated Study Notes (Called by user clicking Save in UI) ---
 const saveNotesInputSchema = z.object({
     topicName: z.string().min(1, 'Topic name is required.'),
     studyNotes: z.string(), // Allow empty notes (though saveLearningEntry might skip)
@@ -370,7 +352,7 @@ export async function saveUpdatedNotesAction(
 
     if (savedId === null) {
         // Error occurred during save
-        const errorMsg = `Failed to save updated notes for topic "${topicName}" to the database.`;
+        const errorMsg = `Failed to save updated notes for topic "${topicName}" to the database. Check server logs for Firestore permissions or configuration issues.`;
         console.error(`[Action/SaveNotes] ${errorMsg}`);
         return { success: false, error: errorMsg };
     } else if (savedId === "skipped_empty") {
@@ -385,3 +367,5 @@ export async function saveUpdatedNotesAction(
         return { success: true, error: null };
     }
 }
+
+    

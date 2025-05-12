@@ -5,12 +5,12 @@ import { useActionState, startTransition } from 'react';
 import { ChatInputForm } from '@/components/chat-input-form';
 import { TopicDisplay } from '@/components/topic-display';
 import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions';
-import { generateQuizTopicsAction, saveUpdatedNotesAction } from '@/app/actions'; // Import new action
+import { generateQuizTopicsAction, saveUpdatedNotesAction } from '@/app/actions'; // Import save action
 import { QuizDisplay } from '@/components/quiz-display';
 import type { QuizTopic } from '@/ai/flows/generate-quiz-topics';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Loader2, Brain, ArrowLeft, Save } from 'lucide-react'; // Added Save icon
+import { Loader2, Brain, ArrowLeft } from 'lucide-react'; // Removed Save icon here, it's in TopicDisplay
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { CheckCircle, AlertCircle } from 'lucide-react';
@@ -87,35 +87,22 @@ export default function Home() {
         // Show toast message based on result error field
         if (processedResults.error) {
             console.error(`[Page] Analysis completed with error: ${processedResults.error}`);
-            // Check if it's likely a DB save error vs. a critical AI failure/validation error
-            if (processedResults.error.toLowerCase().includes('database') || processedResults.error.toLowerCase().includes('firestore') || processedResults.error.toLowerCase().includes('save')) {
-                 toast({
-                    title: "Analysis Completed with Save Issues",
-                    description: processedResults.error, // Display DB error
-                    variant: "destructive", // Use destructive variant for errors
-                    duration: 9000 // Keep toast longer for important errors
-                });
-                 // Still show results if available, error is logged and shown
-            } else {
-                 // For other errors (e.g., validation, critical AI failure)
-                 // The error will also be displayed in the dedicated error div below the form.
-                 // No redundant toast needed here, as the error div is more prominent.
-                 console.log("[Page] Analysis completed with non-DB error, will be displayed in error div:", processedResults.error);
-                 // Don't clear results here, let the error message display alongside potentially partial results
-                 // setAnalysisResults(null); // <-- Removed this line
-            }
+            // For any processing errors (validation, AI failure), the error will be displayed
+            // in the dedicated error div below the form. No toast needed here for these.
+            console.log("[Page] Analysis completed with processing error, will be displayed in error div:", processedResults.error);
+            // Don't clear results here, let the error message display alongside potentially partial results
         } else {
             // Success case (no error reported in the result object)
-            console.log("[Page] Analysis completed successfully (no error field).");
+            console.log("[Page] Analysis completed successfully (no processing error field).");
             toast({
                 title: "Analysis Complete",
-                description: "Conversation analyzed successfully."
+                description: "Conversation analyzed successfully. You can now save the study notes."
             });
         }
     } else {
-        // Handle case where the action itself returned null (should not happen with new error handling)
-        const errorMsg = "Processing finished, but no results were returned. Please try again.";
-        console.error('[Page] Analysis processing returned null results, which is unexpected.');
+        // Handle case where the action itself returned null (e.g., serialization error)
+        const errorMsg = "Processing finished, but no results were returned or results could not be displayed. Please try again.";
+        console.error('[Page] Analysis processing returned null or invalid results.');
         setAnalysisResults(null); // Ensure results are null
         setAnalysisError(errorMsg); // Set error message
         toast({
@@ -186,25 +173,29 @@ export default function Home() {
   }, []);
 
   // --- Handler for Updating Study Notes LOCALLY ---
+  // This is called by TopicDisplay when the textarea changes in edit mode
   const handleLocalNotesUpdate = React.useCallback((updatedNotes: string) => {
     setAnalysisResults(prevResults => {
       if (!prevResults) return null;
       // Determine topic name for potential saving
       const topicName = prevResults.category || (prevResults.topicsSummary && prevResults.topicsSummary.trim().length > 0 ? prevResults.topicsSummary.substring(0, 50) : null) || "Untitled Analysis";
-      setNotesToSave({ topicName: topicName, notes: updatedNotes }); // Mark notes as needing save
-      console.log(`[Page] Locally updating study notes for topic: ${topicName}. Marked for saving.`);
-      return {
-        ...prevResults,
-        studyNotes: updatedNotes,
-      };
+      // Store the potentially changed notes and topic name, marking them as 'dirty' for saving
+      setNotesToSave({ topicName: topicName, notes: updatedNotes });
+      console.log(`[Page] Locally updating study notes content. Marked for saving.`);
+      // We only update the 'notesToSave' state here. The main 'analysisResults.studyNotes'
+      // should ideally remain the original generated value until a successful save,
+      // or we can update it visually here but rely on 'notesToSave' for the actual save action.
+      // Let's keep analysisResults.studyNotes showing the *original* until saved.
+      // The TopicDisplay component will manage showing the edited value from its internal state.
+      return prevResults; // Return previous results, TopicDisplay handles showing the edited notes
     });
-     // No toast here, user clicks save button
   }, []);
 
-  // --- Handler for Saving Updated Notes ---
+  // --- Handler for Triggering Save Updated Notes Action ---
+  // This is called by TopicDisplay when the Save button is clicked
   const handleSaveNotes = () => {
       if (!notesToSave) {
-          toast({ title: "Info", description: "No changes in notes to save.", variant: "default"});
+          toast({ title: "Info", description: "No changes detected in notes to save.", variant: "default"});
           return;
       }
        if (isSaveNotesPending) {
@@ -212,29 +203,35 @@ export default function Home() {
           return;
       }
 
-      console.log(`[Page] Attempting to save updated notes for topic: ${notesToSave.topicName}`);
+      console.log(`[Page] Triggering save action for updated notes for topic: ${notesToSave.topicName}`);
       const formData = new FormData();
       formData.append('topicName', notesToSave.topicName);
-      formData.append('studyNotes', notesToSave.notes);
+      formData.append('studyNotes', notesToSave.notes); // Use the potentially edited notes
 
       startTransition(() => {
-          saveNotesFormAction(formData);
+          saveNotesFormAction(formData); // Call the action bound to saveUpdatedNotesAction
       });
   };
 
   // --- Effect to handle Save Notes Action Results ---
   React.useEffect(() => {
+      // Only react when the action is no longer pending and the state isn't the initial one
       if (!isSaveNotesPending && saveNotesState !== initialSaveNotesState) {
           console.log('[Page Effect] Save Notes Action state received:', saveNotesState);
           if (saveNotesState.success) {
-              toast({ title: "Success", description: "Study notes saved successfully." });
-              setNotesToSave(null); // Clear the save flag
+              toast({ title: "Success", description: "Study notes saved successfully to database." });
+              setNotesToSave(null); // Clear the 'dirty' flag after successful save
+
+              // Optionally update the main analysisResults with the saved notes
+              setAnalysisResults(prev => prev ? { ...prev, studyNotes: notesToSave?.notes ?? prev.studyNotes } : null);
+
           } else {
-              toast({ title: "Save Error", description: saveNotesState.error || "Failed to save notes.", variant: "destructive" });
-              // Keep notesToSave set, so user can retry saving
+              toast({ title: "Save Error", description: saveNotesState.error || "Failed to save notes to database.", variant: "destructive" });
+              // Keep notesToSave set, so user can retry saving without losing edits
           }
       }
-  }, [saveNotesState, isSaveNotesPending, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveNotesState, isSaveNotesPending, toast]); // Add notesToSave?.notes to deps? Maybe not needed if we rely on state change
 
 
   // --- Handler for going back from Quiz Summary ---
@@ -258,7 +255,7 @@ export default function Home() {
             </svg>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">ChatMapper</h1>
           <p className="text-muted-foreground mt-2">
-            Unravel your ChatGPT conversations. Extract topics, map concepts, analyze code, get study notes, and test your recall.
+            Unravel your ChatGPT conversations. Extract topics, analyze code, get study notes, test your recall, and save your notes.
           </p>
         </header>
 
@@ -285,18 +282,18 @@ export default function Home() {
 
 
          {/* Display Analysis Results (only if NOT loading, results available, NOT quizzing/summarizing) */}
-         {/* Note: We display results even if there's a save error (analysisError might be set) */}
-         {!isLoadingAnalysis && analysisResults && !isQuizzing && !showQuizSummary && (
+         {/* Display results even if there was a previous save error, but hide if there was a processing error */}
+         {!isLoadingAnalysis && analysisResults && !analysisError && !isQuizzing && !showQuizSummary && (
              <>
                  <TopicDisplay
                     results={analysisResults}
-                    onNotesUpdate={handleLocalNotesUpdate}
-                    onSaveNotes={handleSaveNotes} // Pass save handler
+                    onNotesUpdate={handleLocalNotesUpdate} // Pass handler for local edits
+                    onSaveNotes={handleSaveNotes} // Pass handler to trigger save action
                     isSavingNotes={isSaveNotesPending} // Pass saving state
-                    hasPendingNoteChanges={!!notesToSave} // Indicate if notes changed
+                    hasPendingNoteChanges={!!notesToSave} // Indicate if notes changed locally
                  />
                  {/* Conditionally render quiz button only if analysis was successful (at least summary/topics exist) */}
-                 {(analysisResults.topicsSummary || (analysisResults.keyTopics && analysisResults.keyTopics.length > 0)) && !analysisResults.error?.toLowerCase().includes('summarize') && (
+                 {(analysisResults.topicsSummary || (analysisResults.keyTopics && analysisResults.keyTopics.length > 0)) && (
                     <div className="text-center mt-6">
                         <Button
                             onClick={handleStartQuizGeneration}
@@ -328,10 +325,10 @@ export default function Home() {
             />
         )}
 
-        {/* Initial State / Placeholder Message (hide if loading, results available (even with error), quizzing, or showing summary) */}
+        {/* Initial State / Placeholder Message (hide if loading, results available (even with processing error), quizzing, or showing summary) */}
         {!isLoadingAnalysis && !analysisResults && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-muted-foreground mt-6">
-              Enter a conversation above and click Analyze to see the results. Successful analyses will be saved automatically.
+              Enter a conversation above and click Analyze to generate insights. You can save the notes afterward.
             </div>
         )}
 
@@ -439,3 +436,5 @@ function QuizSummary({ remembered, review, onRestart }: QuizSummaryProps) {
     );
 }
 
+
+    
