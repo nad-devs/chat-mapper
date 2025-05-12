@@ -21,7 +21,7 @@ interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
-// Simple Markdown-like renderer
+// Simple Markdown-like renderer (copied from learnings page for consistency)
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
@@ -111,6 +111,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const handleSave = async (
     contentType: 'study-notes' | 'code-snippet' | 'summary',
     contentToSave: string | null,
+    categoryToSave: string | null, // Add category parameter
     setLoading: React.Dispatch<React.SetStateAction<boolean>>
   ) => {
     if (!contentToSave || contentToSave.trim().length === 0) {
@@ -126,6 +127,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     formData.append('topicName', topicNameToSave);
     formData.append('contentType', contentType);
     formData.append('content', contentToSave);
+    if (categoryToSave) { // Pass category if it exists
+        formData.append('category', categoryToSave);
+    }
 
     startTransition(async () => {
         try {
@@ -148,9 +152,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     });
   };
 
-  const handleSaveNotes = () => handleSave('study-notes', studyNotes, setIsSavingNotes);
-  const handleSaveCode = () => handleSave('code-snippet', codeAnalysis?.finalCodeSnippet ?? null, setIsSavingCode);
-  const handleSaveSummary = () => handleSave('summary', topicsSummary, setIsSavingSummary);
+  const handleSaveNotes = () => handleSave('study-notes', studyNotes, category, setIsSavingNotes);
+  const handleSaveCode = () => handleSave('code-snippet', codeAnalysis?.finalCodeSnippet ?? null, category, setIsSavingCode);
+  const handleSaveSummary = () => handleSave('summary', topicsSummary, category, setIsSavingSummary);
 
 
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
@@ -216,12 +220,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
           {hasOverviewContent && (
             <TabsContent value="overview" className="space-y-4">
                 {topicsSummary && (
-                    <Card className="bg-secondary/30 relative">
+                    <Card className="bg-secondary/30 dark:bg-secondary/10 relative border border-secondary/50 dark:border-secondary/20">
                         <CardHeader>
                              <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Summary</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <p className="text-secondary-foreground">{topicsSummary}</p>
+                            <p className="text-foreground dark:text-foreground/90">{topicsSummary}</p>
                         </CardContent>
                         <CardFooter>
                             <Button
@@ -239,7 +243,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                     </Card>
                 )}
               {keyTopics && keyTopics.length > 0 && (
-                <div className="bg-secondary/30 p-4 rounded-md">
+                <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-secondary/50 dark:border-secondary/20">
                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><Tags className="h-4 w-4 text-secondary-foreground"/>Key Topics</h3>
                   <div className="flex flex-wrap gap-2">
                     {keyTopics.map((topic, index) => (
@@ -254,7 +258,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
           {hasConceptsContent && conceptsMap && (
              <TabsContent value="concepts" className="space-y-4">
                 {conceptsMap.subtopics && conceptsMap.subtopics.length > 0 && (
-                  <div className="bg-muted/30 p-4 rounded-md">
+                  <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-muted/50 dark:border-muted/20">
                     <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><ListTree className="h-4 w-4 text-muted-foreground"/>Subtopics</h3>
                     <div className="flex flex-wrap gap-2">
                       {conceptsMap.subtopics.map((subtopic, index) => (
@@ -264,7 +268,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                   </div>
                 )}
                 {conceptsMap.concepts && conceptsMap.concepts.length > 0 && (
-                   <div className="bg-muted/30 p-4 rounded-md">
+                   <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-muted/50 dark:border-muted/20">
                     <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-muted-foreground"/>Key Concepts</h3>
                     <div className="flex flex-wrap gap-2">
                       {conceptsMap.concepts.map((concept, index) => (
@@ -274,12 +278,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                   </div>
                 )}
                 {conceptsMap.relationships && conceptsMap.relationships.length > 0 && (
-                   <div className="bg-muted/30 p-4 rounded-md">
+                   <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-muted/50 dark:border-muted/20">
                     <h3 className="text-md font-semibold mb-3 flex items-center gap-2"><LinkIcon className="h-4 w-4 text-muted-foreground"/>Relationships</h3>
                     <ScrollArea className="h-[200px] w-full">
                         <ul className="space-y-2 pr-4">
                         {conceptsMap.relationships.map((rel, index) => (
-                            <li key={`rel-${index}`} className="text-sm flex items-center flex-wrap gap-1 p-2 border rounded-md bg-background">
+                            <li key={`rel-${index}`} className="text-sm flex items-center flex-wrap gap-1 p-2 border rounded-md bg-background dark:bg-background/50">
                               <Badge variant="secondary" className="shrink-0">{rel.from}</Badge>
                               <span className="text-muted-foreground mx-1 text-xs">&rarr;</span>
                               <Badge variant="outline" className="italic text-xs shrink-0">{rel.type}</Badge>
@@ -299,12 +303,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                {codeAnalysis.learnedConcept && (
                  <div className="bg-primary/10 dark:bg-primary/20 p-4 rounded-md border border-primary/20 dark:border-primary/50">
                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
-                   <p className="whitespace-pre-wrap text-foreground">{codeAnalysis.learnedConcept}</p>
+                   <p className="whitespace-pre-wrap text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
-                 <Card className="bg-muted/10 overflow-hidden">
-                   <CardHeader className="p-3 pb-2 bg-muted/20 border-b">
+                 <Card className="bg-muted/10 dark:bg-muted/20 overflow-hidden border border-muted/50 dark:border-muted/30">
+                   <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/30 border-b border-muted/50 dark:border-muted/30">
                      <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
                        <CardTitle className="text-sm font-medium">Final Code Example</CardTitle>
                        {codeAnalysis.codeLanguage && <Badge variant="default" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
@@ -314,12 +318,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                    </CardHeader>
                    <CardContent className="p-0">
                      <ScrollArea className="max-h-[400px] w-full">
-                       <pre className="p-4 text-xs bg-background/50 text-foreground whitespace-pre-wrap break-words">
+                       <pre className="p-4 text-xs bg-background/50 dark:bg-background/20 text-foreground dark:text-foreground/90 whitespace-pre-wrap break-words">
                          <code>{codeAnalysis.finalCodeSnippet}</code>
                        </pre>
                      </ScrollArea>
                    </CardContent>
-                    <CardFooter className="p-3 border-t bg-muted/20">
+                    <CardFooter className="p-3 border-t border-muted/50 dark:border-muted/30 bg-muted/20 dark:bg-muted/30">
                          <Button
                             size="sm"
                             variant="outline"
@@ -349,7 +353,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
            {hasStudyNotesContent && (
                 <TabsContent value="notes">
-                    <Card className="bg-secondary/10 border border-secondary/20">
+                    <Card className="bg-secondary/10 dark:bg-secondary/20 border border-secondary/50 dark:border-secondary/30">
                         <CardHeader className="pb-2">
                             <div className="flex justify-between items-center">
                                 <CardTitle className="text-md flex items-center gap-2">

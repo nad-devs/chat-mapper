@@ -18,6 +18,7 @@ export interface LearningEntry {
   topicName: string;
   type: 'study-notes' | 'code-snippet' | 'summary';
   content: string;
+  category: string | null; // Added category field
   createdAt: Timestamp; // Firestore Timestamp for ordering
   // Add a simple string version for client-side serialization if needed
   createdAtISO?: string;
@@ -291,6 +292,7 @@ const saveEntryInputSchema = z.object({
   topicName: z.string().min(1, 'Topic name cannot be empty.'),
   contentType: z.enum(['study-notes', 'code-snippet', 'summary']),
   content: z.string().min(1, 'Content cannot be empty.'),
+  category: z.string().nullable().optional(), // Added category to schema
 });
 
 export type SaveEntryResult = {
@@ -309,27 +311,30 @@ export async function saveEntryAction(
         topicName: formData.get('topicName'),
         contentType: formData.get('contentType'),
         content: formData.get('content'),
+        category: formData.get('category'), // Get category from form data
     });
 
     if (!validatedFields.success) {
         const errorMsg = validatedFields.error.flatten().fieldErrors.contentType?.[0] ||
                          validatedFields.error.flatten().fieldErrors.topicName?.[0] ||
                          validatedFields.error.flatten().fieldErrors.content?.[0] ||
+                         validatedFields.error.flatten().fieldErrors.category?.[0] ||
                          'Invalid input for saving entry.';
         console.error('[Action] Save Entry Validation failed:', errorMsg);
         return { success: false, error: errorMsg };
     }
 
-    const { topicName, contentType, content } = validatedFields.data;
+    const { topicName, contentType, content, category } = validatedFields.data;
     const entryType = contentType; // Rename for clarity
 
-    console.log(`[Action] Attempting to save entry: Type=${entryType}, Topic=${topicName.substring(0, 50)}...`);
+    console.log(`[Action] Attempting to save entry: Type=${entryType}, Topic=${topicName.substring(0, 50)}, Category=${category ?? 'N/A'}...`);
 
     try {
         const docRef = await addDoc(collection(db, "learningEntries"), {
             topicName: topicName,
             type: entryType,
             content: content,
+            category: category ?? null, // Save category (or null if not provided)
             createdAt: serverTimestamp()
         });
         console.log("[Action] Document written with ID: ", docRef.id);
@@ -367,6 +372,7 @@ export async function getLearningEntriesAction(): Promise<GetLearningEntriesResu
                 topicName: data.topicName,
                 type: data.type,
                 content: data.content,
+                category: data.category ?? null, // Fetch category, default to null if missing
                 createdAt: createdAt, // Keep original Timestamp for potential server-side use
                 createdAtISO: createdAt.toDate().toISOString(), // Add ISO string for client
             });

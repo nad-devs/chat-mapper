@@ -3,11 +3,12 @@
 import * as React from 'react';
 import { getLearningEntriesAction, type LearningEntry, type GetLearningEntriesResult } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'; // Import Accordion
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIconLucide, AlertTriangle, ArrowLeft, FileText, Code, Edit3, Inbox, CalendarDays } from 'lucide-react'; // Inbox for empty state, CalendarDays
+import { Calendar as CalendarIconLucide, AlertTriangle, ArrowLeft, FileText, Code, Edit3, Inbox, CalendarDays, Folder } from 'lucide-react'; // Inbox for empty state, CalendarDays, Folder
 import Link from 'next/link';
 import { format, isSameDay } from 'date-fns'; // For formatting dates and comparing days
 import { Calendar } from '@/components/ui/calendar'; // ShadCN Calendar
@@ -81,13 +82,16 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   return <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">{groupedElements}</div>;
 };
 
+// Define the type for grouped learnings
+type GroupedLearnings = Record<string, LearningEntry[]>;
 
 export default function LearningsPage() {
   const [allLearnings, setAllLearnings] = React.useState<LearningEntry[] | null>(null);
-  const [filteredLearnings, setFilteredLearnings] = React.useState<LearningEntry[]>([]);
+  const [groupedLearnings, setGroupedLearnings] = React.useState<GroupedLearnings>({});
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(undefined);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [activeAccordionItems, setActiveAccordionItems] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     async function fetchLearnings() {
@@ -99,7 +103,9 @@ export default function LearningsPage() {
           setError(result.error);
           setAllLearnings(null);
         } else {
-          setAllLearnings(result.entries);
+          // Sort all learnings initially by date, newest first
+          const sortedLearnings = result.entries?.sort((a, b) => new Date(b.createdAtISO!).getTime() - new Date(a.createdAtISO!).getTime()) ?? [];
+          setAllLearnings(sortedLearnings);
         }
       } catch (e: any) {
         setError(e.message || 'Failed to fetch learning entries.');
@@ -112,14 +118,32 @@ export default function LearningsPage() {
   }, []);
 
   React.useEffect(() => {
-    if (selectedDate && allLearnings) {
-      const newFilteredLearnings = allLearnings.filter(entry => {
-        if (!entry.createdAtISO) return false;
-        return isSameDay(new Date(entry.createdAtISO), selectedDate);
-      }).sort((a, b) => new Date(b.createdAtISO!).getTime() - new Date(a.createdAtISO!).getTime()); // Sort by time, newest first
-      setFilteredLearnings(newFilteredLearnings);
+    if (allLearnings) {
+      // 1. Filter by date if selected
+      const dateFilteredLearnings = selectedDate
+        ? allLearnings.filter(entry => {
+            if (!entry.createdAtISO) return false;
+            return isSameDay(new Date(entry.createdAtISO), selectedDate);
+          })
+        : allLearnings; // If no date selected, use all learnings
+
+      // 2. Group the filtered learnings by category
+      const grouped = dateFilteredLearnings.reduce((acc: GroupedLearnings, entry) => {
+        const category = entry.category || 'Uncategorized'; // Default to 'Uncategorized'
+        if (!acc[category]) {
+          acc[category] = [];
+        }
+        acc[category].push(entry); // Already sorted by date
+        return acc;
+      }, {});
+
+      setGroupedLearnings(grouped);
+      // Automatically open all accordion items when data changes
+      setActiveAccordionItems(Object.keys(grouped));
+
     } else {
-      setFilteredLearnings([]); // Clear if no date selected or no allLearnings
+      setGroupedLearnings({}); // Clear if no allLearnings
+       setActiveAccordionItems([]);
     }
   }, [selectedDate, allLearnings]);
 
@@ -164,8 +188,9 @@ export default function LearningsPage() {
               <Skeleton className="h-[300px] w-full" />
             </div>
             <div className="flex-1 space-y-4">
-              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-10 w-full" /> {/* For accordion header */}
               <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-10 w-full" /> {/* For accordion header */}
               <Skeleton className="h-20 w-full" />
             </div>
           </div>
@@ -234,10 +259,11 @@ export default function LearningsPage() {
                 </Button>
             </Link>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">My Saved Learnings</h1>
-          <p className="text-muted-foreground mt-2">Select a date from the calendar to view your entries.</p>
+          <p className="text-muted-foreground mt-2">Browse your saved entries by category. Use the calendar to filter by date.</p>
         </header>
 
         <div className="flex flex-col md:flex-row gap-8">
+          {/* Calendar Section */}
           <div className="md:w-auto md:min-w-[280px] lg:min-w-[320px] flex justify-center md:justify-start">
             <Card className="p-0">
               <Calendar
@@ -248,57 +274,85 @@ export default function LearningsPage() {
                 disabled={(date) => date > new Date() || date < new Date("2000-01-01")}
                 initialFocus
               />
+               {selectedDate && (
+                    <div className="p-3 border-t text-center">
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedDate(undefined)}>
+                            Clear Date Filter
+                        </Button>
+                    </div>
+                )}
             </Card>
           </div>
 
+          {/* Learnings Display Section */}
           <div className="flex-1">
-            {selectedDate ? (
-              <>
-                <h2 className="text-2xl font-semibold mb-4 text-foreground">
-                  Entries for {format(selectedDate, "MMMM d, yyyy")}
-                </h2>
-                {filteredLearnings.length > 0 ? (
-                  <ScrollArea className="h-[600px] pr-4"> {/* Added ScrollArea */}
-                    <div className="space-y-4">
-                      {filteredLearnings.map((entry) => (
-                        <Card key={entry.id} className="overflow-hidden shadow-sm bg-card">
-                          <CardHeader className="bg-muted/30 p-4 border-b">
-                            <CardTitle className="text-lg flex items-center gap-2">
-                              {getEntryIcon(entry.type)}
-                              {entry.topicName || getEntryTitle(entry.type)}
-                            </CardTitle>
-                            {entry.createdAtISO && (
-                               <CardDescription className="text-xs pt-1">
-                                 Saved at: {format(new Date(entry.createdAtISO), "h:mm a")}
-                               </CardDescription>
-                            )}
-                          </CardHeader>
-                          <CardContent className="p-4">
-                            {entry.type === 'code-snippet' ? (
-                              <ScrollArea className="max-h-[300px] w-full">
-                                <pre className="p-3 text-xs bg-background/50 text-foreground whitespace-pre-wrap break-words rounded-md border">
-                                  <code>{entry.content}</code>
-                                </pre>
-                              </ScrollArea>
-                            ) : (
-                              <SimpleMarkdownRenderer content={entry.content} />
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                ) : (
-                  <Card className="flex flex-col items-center justify-center p-10 text-center bg-card">
-                    <CalendarDays className="h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No entries found for this date.</p>
-                  </Card>
-                )}
-              </>
+             <h2 className="text-2xl font-semibold mb-4 text-foreground">
+              {selectedDate ? `Entries for ${format(selectedDate, "MMMM d, yyyy")}` : "All Entries"} by Category
+            </h2>
+            {Object.keys(groupedLearnings).length > 0 ? (
+                 <Accordion
+                    type="multiple" // Allow multiple items open
+                    value={activeAccordionItems} // Control open items
+                    onValueChange={setActiveAccordionItems} // Update state on change
+                    className="w-full space-y-2"
+                >
+                {Object.entries(groupedLearnings)
+                  .sort(([categoryA], [categoryB]) => categoryA.localeCompare(categoryB)) // Sort categories alphabetically
+                  .map(([category, entries]) => (
+                  <AccordionItem value={category} key={category} className="border bg-card rounded-lg shadow-sm overflow-hidden">
+                    <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/30 text-lg font-medium">
+                       <div className="flex items-center gap-2">
+                           <Folder className="h-5 w-5 text-accent" />
+                           {category} ({entries.length})
+                       </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-4 pb-4 pt-0">
+                        <ScrollArea className="h-[500px] pr-3 -mr-3"> {/* Adjust height as needed */}
+                             <div className="space-y-4 pt-2">
+                                {entries.map((entry) => (
+                                    <Card key={entry.id} className="overflow-hidden shadow-sm bg-background/50 dark:bg-background/20 border border-border/50">
+                                        <CardHeader className="bg-muted/30 dark:bg-muted/10 p-3 border-b border-border/50">
+                                            <CardTitle className="text-base flex items-center gap-2">
+                                            {getEntryIcon(entry.type)}
+                                            {entry.topicName || getEntryTitle(entry.type)}
+                                            </CardTitle>
+                                            {entry.createdAtISO && (
+                                            <CardDescription className="text-xs pt-1">
+                                                Saved at: {format(new Date(entry.createdAtISO), "h:mm a")}
+                                                {!selectedDate && ` on ${format(new Date(entry.createdAtISO), "MMM d, yyyy")}`} {/* Show date if not filtering */}
+                                            </CardDescription>
+                                            )}
+                                        </CardHeader>
+                                        <CardContent className="p-3">
+                                            {entry.type === 'code-snippet' ? (
+                                                <ScrollArea className="max-h-[300px] w-full">
+                                                    <pre className="p-3 text-xs bg-background/50 dark:bg-muted/20 text-foreground whitespace-pre-wrap break-words rounded-md border">
+                                                        <code>{entry.content}</code>
+                                                    </pre>
+                                                </ScrollArea>
+                                            ) : (
+                                                <SimpleMarkdownRenderer content={entry.content} />
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        </ScrollArea>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
             ) : (
               <Card className="flex flex-col items-center justify-center p-10 text-center bg-card">
-                 <CalendarIconLucide className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">Please select a date from the calendar to view your learning entries.</p>
+                <CalendarDays className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                    {selectedDate ? "No entries found for this date." : "No entries found matching the current filter."}
+                </p>
+                 {selectedDate && (
+                    <Button variant="link" onClick={() => setSelectedDate(undefined)} className="mt-4">
+                        Show all entries
+                    </Button>
+                )}
               </Card>
             )}
           </div>
@@ -307,4 +361,3 @@ export default function LearningsPage() {
     </main>
   );
 }
-
