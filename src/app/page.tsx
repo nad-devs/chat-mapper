@@ -111,6 +111,18 @@ export default function Home() {
     setShowQuizSummary(true); // Show the summary view
   }, []);
 
+  // --- Handler for Updating Study Notes ---
+  const handleNotesUpdate = React.useCallback((updatedNotes: string) => {
+    setAnalysisResults(prevResults => {
+      if (!prevResults) return null;
+      return {
+        ...prevResults,
+        studyNotes: updatedNotes,
+      };
+    });
+     toast({ title: "Notes Updated", description: "Your study notes have been saved locally." });
+  }, [toast]);
+
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-gradient-to-br from-background to-secondary/10">
@@ -144,7 +156,7 @@ export default function Home() {
          {/* Display Analysis Results */}
         {!isLoadingAnalysis && analysisResults && !analysisResults.error && !isQuizzing && !showQuizSummary && (
             <>
-                <TopicDisplay results={analysisResults} />
+                <TopicDisplay results={analysisResults} onNotesUpdate={handleNotesUpdate} />
                 {/* Add button to start quiz */}
                 <div className="text-center mt-6">
                     <Button

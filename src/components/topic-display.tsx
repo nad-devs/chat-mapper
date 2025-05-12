@@ -10,10 +10,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb } from 'lucide-react';
+import { Button } from '@/components/ui/button'; // Import Button
+import { Textarea } from '@/components/ui/textarea'; // Import Textarea
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Edit, Save, XCircle } from 'lucide-react'; // Import icons
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
+  onNotesUpdate: (updatedNotes: string) => void; // Callback to update notes in parent
 }
 
 // Simple Markdown-like renderer (basic bold, list, H3, inline code support)
@@ -99,14 +102,41 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 };
 
 
-export function TopicDisplay({ results }: TopicDisplayProps) {
-  const { topicsSummary, keyTopics, conceptsMap, codeAnalysis, studyNotes } = results; // Updated field name
+export function TopicDisplay({ results, onNotesUpdate }: TopicDisplayProps) {
+  const { topicsSummary, keyTopics, conceptsMap, codeAnalysis, studyNotes } = results;
+
+  // State for editing study notes
+  const [isEditingNotes, setIsEditingNotes] = React.useState(false);
+  const [editedNotes, setEditedNotes] = React.useState(studyNotes || "");
+
+  // Update editedNotes if the underlying studyNotes prop changes (e.g., new analysis)
+  React.useEffect(() => {
+    setEditedNotes(studyNotes || "");
+    setIsEditingNotes(false); // Exit edit mode on new analysis
+  }, [studyNotes]);
+
+  // Handlers for editing notes
+  const handleEditNotesClick = () => {
+    setEditedNotes(studyNotes || ""); // Reset to original on edit start
+    setIsEditingNotes(true);
+  };
+
+  const handleSaveNotesClick = () => {
+    onNotesUpdate(editedNotes); // Call parent update function
+    setIsEditingNotes(false);
+  };
+
+  const handleCancelEditClick = () => {
+    setIsEditingNotes(false);
+    setEditedNotes(studyNotes || ""); // Revert changes
+  };
+
 
   // Determine if each section has content
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  const hasStudyNotesContent = !!studyNotes; // Updated field name
+  const hasStudyNotesContent = !!studyNotes || isEditingNotes; // Include editing state
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
@@ -116,7 +146,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   ].filter(tab => tab.hasContent); // Filter out tabs with no content
 
   // If no tabs have content, show a message
-  if (availableTabs.length === 0) {
+  if (availableTabs.length === 0 && !isEditingNotes) {
     return (
       <Card className="w-full mt-6">
         <CardHeader>
@@ -129,8 +159,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     );
   }
 
-  // Set default tab to the first available one
-  const defaultTabValue = availableTabs[0].value;
+  // Set default tab to the first available one, or 'notes' if only editing is active
+  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : 'notes';
 
   return (
     <Card className="w-full mt-6">
@@ -258,17 +288,48 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
            )}
 
            {/* Study Notes Tab */}
-           {hasStudyNotesContent && studyNotes && ( // Updated field name
+           {hasStudyNotesContent && (
                 <TabsContent value="notes">
                     <div className="bg-secondary/10 p-4 rounded-md border border-secondary/20">
-                        <h3 className="text-md font-semibold mb-3 flex items-center gap-2">
-                           <Lightbulb className="h-4 w-4 text-secondary-foreground" />
-                           Study Notes
-                        </h3>
-                        {/* Simplified prose classes, relying more on theme defaults */}
-                        <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">
-                            <SimpleMarkdownRenderer content={studyNotes} />
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-md font-semibold flex items-center gap-2">
+                            <Lightbulb className="h-4 w-4 text-secondary-foreground" />
+                            Study Notes
+                            </h3>
+                            {!isEditingNotes && studyNotes && ( // Show Edit only if notes exist and not editing
+                                <Button variant="ghost" size="sm" onClick={handleEditNotesClick}>
+                                    <Edit className="h-4 w-4 mr-1" /> Edit
+                                </Button>
+                            )}
                         </div>
+
+                         {isEditingNotes ? (
+                            <div className="space-y-3">
+                                <Textarea
+                                    value={editedNotes}
+                                    onChange={(e) => setEditedNotes(e.target.value)}
+                                    rows={15}
+                                    className="text-sm"
+                                    placeholder="Edit your study notes..."
+                                />
+                                <div className="flex justify-end gap-2">
+                                     <Button variant="ghost" size="sm" onClick={handleCancelEditClick}>
+                                        <XCircle className="h-4 w-4 mr-1" /> Cancel
+                                    </Button>
+                                    <Button variant="default" size="sm" onClick={handleSaveNotesClick}>
+                                        <Save className="h-4 w-4 mr-1" /> Save Notes
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                             studyNotes ? (
+                                <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">
+                                    <SimpleMarkdownRenderer content={studyNotes} />
+                                </div>
+                            ) : (
+                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
+                            )
+                        )}
                     </div>
                 </TabsContent>
             )}
