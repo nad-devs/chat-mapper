@@ -9,6 +9,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import { saveLearningEntry } from '@/app/actions'; // Ensure save action is imported
 
 const GenerateStudyNotesInputSchema = z.object({
   conversationText: z
@@ -27,7 +28,7 @@ const GenerateStudyNotesOutputSchema = z.object({
   studyNotes: z
     .string()
     .describe(
-      'Compact, well-formatted study sheet based *only* on the technical content of the conversation. Follows the structure: Problem Definition, Algorithm Outline, Annotated Python Solution (or relevant language). No mention of learner struggles. Uses Markdown.'
+      'Compact, well-formatted study sheet based *only* on the technical content of the conversation. Follows the structure: Problem Definition, Algorithm Outline, Annotated Solution (in relevant language). No mention of learner struggles. Uses Markdown.' // Updated description
     ),
 });
 export type GenerateStudyNotesOutput = z.infer<
@@ -47,12 +48,13 @@ export async function generateStudyNotes(
     }
 }
 
+// Previous simpler prompt structure
 const prompt = ai.definePrompt({
   name: 'generateStudyNotesPrompt',
   model: 'googleai/gemini-1.5-flash-latest',
   input: {schema: GenerateStudyNotesInputSchema},
   output: {schema: GenerateStudyNotesOutputSchema},
-  prompt: `You are ChatGPT, a senior learning-design specialist.
+  prompt: `You are an expert technical writer creating study notes from a conversation.
 Analyze the entire conversation text provided below. Your task is to create a compact, well-formatted study sheet that the learner can review later. **This sheet should contain ONLY the technical reference material derived from the conversation.**
 
 Conversation Text:
@@ -88,10 +90,13 @@ Return the formatted study notes as a single Markdown string in the "studyNotes"
 `,
 });
 
+
 const generateStudyNotesFlow = ai.defineFlow(
   {
     name: 'generateStudyNotesFlow',
-    inputSchema: GenerateStudyNotesInputSchema},
+    inputSchema: GenerateStudyNotesInputSchema,
+    outputSchema: GenerateStudyNotesOutputSchema, // Ensure output schema is defined
+  },
   async input => {
     // Note: This flow now takes optional pre-analyzed code info,
     // but the prompt is designed to work even if it's not provided,
@@ -101,7 +106,27 @@ const generateStudyNotesFlow = ai.defineFlow(
     if (!output) {
        return { studyNotes: "" }; // Return empty notes if AI fails to produce output
     }
+
+    const studyNotesContent = output.studyNotes || "";
+
+    // // Removed Firestore saving from here - will be triggered by button in UI
+    // if (studyNotesContent.trim().length > 0) {
+    //     const topicName = input.learnedConcept || "Untitled Study Notes"; // Use learned concept or a default
+    //     try {
+    //         await saveLearningEntry({
+    //             topicName: topicName,
+    //             type: "study-notes",
+    //             content: studyNotesContent,
+    //             // timestamp is added by the action
+    //         });
+    //         console.log(`[Flow: Study Notes] Saved study notes for topic: ${topicName}`);
+    //     } catch (saveError) {
+    //         console.error(`[Flow: Study Notes] Failed to save study notes for topic ${topicName}:`, saveError);
+    //         // Decide if flow should fail or just log error
+    //     }
+    // }
+
     // Pass through the AI's response, even if notes are empty
-    return { studyNotes: output.studyNotes || "" };
+    return { studyNotes: studyNotesContent };
   }
 );
