@@ -1,6 +1,6 @@
 
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-// Remove Firestore imports: import { getFirestore, Firestore } from 'firebase/firestore';
+import { getFirestore, Firestore, serverTimestamp } from 'firebase/firestore'; // Import Firestore and serverTimestamp
 // Add other Firebase services as needed (e.g., getAuth, getStorage)
 
 // User-provided Firebase configuration
@@ -8,7 +8,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyD-_ZnF95A9m5o2eKE2Pdv9V06Eg70rQ4o",
   authDomain: "chatmapper-jagu3.firebaseapp.com",
   projectId: "chatmapper-jagu3",
-  storageBucket: "chatmapper-jagu3.appspot.com", // Adjusted to typical Firebase storage URL
+  storageBucket: "chatmapper-jagu3.appspot.com", // Ensure this matches your storage bucket if using storage
   messagingSenderId: "440684675583",
   appId: "1:440684675583:web:0003e89a9efd1396a067ca"
   // measurementId is optional and wasn't provided, can be added if needed
@@ -43,18 +43,17 @@ if (!getApps().length) {
   console.log("[Firebase] Existing Firebase App retrieved.");
 }
 
-// Removed Firestore initialization and export
-// let db: Firestore;
-// try {
-//     db = getFirestore(app);
-//     console.log("[Firebase] Firestore initialized successfully.");
-// } catch(e) {
-//     console.error("[Firebase] Error initializing Firestore:", e);
-//     // Rethrow or handle error as needed
-//     throw e;
-// }
+// Initialize Firestore
+let db: Firestore;
+try {
+    db = getFirestore(app);
+    console.log("[Firebase] Firestore initialized successfully.");
+} catch(e) {
+    console.error("[Firebase] Error initializing Firestore:", e);
+    // Rethrow or handle error as needed
+    throw e;
+}
 
 
-// Export only the app instance
-export { app }; // Removed db export
-
+// Export the app and db instances, and serverTimestamp
+export { app, db, serverTimestamp };
