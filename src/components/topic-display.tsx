@@ -1,30 +1,28 @@
-
 import * as React from 'react';
-import type { ProcessedConversationResult, SaveEntryResult } from '@/app/actions'; // Import SaveEntryResult
-import { saveEntryAction } from '@/app/actions'; // Import the save action
-import { useActionState, startTransition } from 'react'; // Import startTransition
+import type { ProcessedConversationResult } from '@/app/actions';
+import { saveEntryAction } from '@/app/actions';
+import { startTransition } from 'react';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter // Added CardFooter
+  CardFooter
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button'; // Import Button
-import { useToast } from "@/hooks/use-toast"; // Import useToast
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Save, Loader2 } from 'lucide-react'; // Import Save and Loader2 icons
+import { Button } from '@/components/ui/button';
+import { useToast } from "@/hooks/use-toast";
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Save, Loader2 } from 'lucide-react';
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
-// Simple Markdown-like renderer (basic bold, list, H3, inline code support)
+// Simple Markdown-like renderer
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
-    // ... (renderer code remains the same)
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
     line = line.trimStart().trimEnd();
@@ -49,8 +47,11 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         });
     };
 
-    if (line.startsWith('## ')) {
-      return <h3 key={index} className="text-lg font-semibold mt-4 mb-2">{renderBold(line.substring(3))}</h3>;
+    if (line.startsWith('### ')) { // H3
+      return <h3 key={index} className="text-xl font-semibold mt-4 mb-2">{renderBold(line.substring(4))}</h3>;
+    }
+     if (line.startsWith('## ')) { // H2
+      return <h2 key={index} className="text-2xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
     }
     if (line.startsWith('* ') || line.startsWith('- ')) {
       return <li key={index} className="ml-4">{renderBold(line.substring(2))}</li>;
@@ -87,7 +88,7 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
      groupedElements.push(<ul key="ul-last" className="space-y-1 mb-2 list-disc pl-5">{currentList}</ul>);
    }
 
-  return <>{groupedElements}</>;
+  return <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">{groupedElements}</div>;
 };
 
 
@@ -112,12 +113,11 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     contentToSave: string | null,
     setLoading: React.Dispatch<React.SetStateAction<boolean>>
   ) => {
-    if (!contentToSave) {
-      toast({ title: "Error", description: "No content to save.", variant: "destructive" });
+    if (!contentToSave || contentToSave.trim().length === 0) {
+      toast({ title: "Nothing to Save", description: `The ${contentType.replace('-', ' ')} content is empty.`, variant: "default" });
       return;
     }
 
-    // Determine the topic name - prioritize summary, then concept, then default
     const topicNameToSave = topicsSummary || codeAnalysis?.learnedConcept || defaultTopicName;
 
     setLoading(true);
@@ -129,8 +129,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
     startTransition(async () => {
         try {
-            // Call the action directly, no need for useActionState here for simple triggers
-            const result = await saveEntryAction(null, formData); // Pass null for prevState
+            const result = await saveEntryAction(null, formData);
             if (result.success) {
                 toast({ title: "Success", description: result.info || `${contentType.replace('-', ' ')} saved.` });
             } else {
@@ -149,17 +148,15 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     });
   };
 
-  // Specific save handlers calling the generic one
   const handleSaveNotes = () => handleSave('study-notes', studyNotes, setIsSavingNotes);
   const handleSaveCode = () => handleSave('code-snippet', codeAnalysis?.finalCodeSnippet ?? null, setIsSavingCode);
   const handleSaveSummary = () => handleSave('summary', topicsSummary, setIsSavingSummary);
 
 
-  // Determine if each section has content
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  const hasStudyNotesContent = true; // Always show the notes tab
+  const hasStudyNotesContent = true;
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
@@ -172,7 +169,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const codeSnippetExists = codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0;
   const summaryExists = topicsSummary && topicsSummary.trim().length > 0;
 
-  if (availableTabs.length <= 1 && !notesExist) {
+  if (availableTabs.length === 0 && !notesExist) { // Check availableTabs instead of specific content checks
     return (
       <Card className="w-full mt-6">
         <CardHeader>
@@ -184,14 +181,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
            )}
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">No significant topics, concepts, or code insights found.</p>
-             <div className="mt-4 bg-secondary/10 p-4 rounded-md border border-secondary/20">
-                <h3 className="text-md font-semibold flex items-center gap-2 mb-2">
-                    <Lightbulb className="h-4 w-4 text-secondary-foreground" />
-                    Study Notes
-                </h3>
-                <p className="text-muted-foreground text-sm italic">No study notes were generated.</p>
-            </div>
+          <p className="text-muted-foreground">No significant topics, concepts, or code insights found, and no study notes were generated.</p>
         </CardContent>
       </Card>
     );
@@ -223,25 +213,30 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
              ))}
           </TabsList>
 
-          {/* Overview Tab */}
           {hasOverviewContent && (
             <TabsContent value="overview" className="space-y-4">
                 {topicsSummary && (
-                    <div className="bg-secondary/30 p-4 rounded-md relative">
-                        <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Summary</h3>
-                        <p className="text-secondary-foreground pr-16">{topicsSummary}</p> {/* Add padding for button */}
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleSaveSummary}
-                            disabled={isSavingSummary || !summaryExists}
-                            className="absolute top-4 right-4"
-                            aria-label="Save Summary"
-                        >
-                            {isSavingSummary ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                            {isSavingSummary ? 'Saving...' : 'Save'}
-                        </Button>
-                    </div>
+                    <Card className="bg-secondary/30 relative">
+                        <CardHeader>
+                             <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Summary</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-secondary-foreground">{topicsSummary}</p>
+                        </CardContent>
+                        <CardFooter>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleSaveSummary}
+                                disabled={isSavingSummary || !summaryExists}
+                                aria-label="Save Summary"
+                                className="ml-auto"
+                            >
+                                {isSavingSummary ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                {isSavingSummary ? 'Saving...' : 'Save Summary'}
+                            </Button>
+                        </CardFooter>
+                    </Card>
                 )}
               {keyTopics && keyTopics.length > 0 && (
                 <div className="bg-secondary/30 p-4 rounded-md">
@@ -256,10 +251,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
             </TabsContent>
           )}
 
-          {/* Concept Map Tab */}
           {hasConceptsContent && conceptsMap && (
              <TabsContent value="concepts" className="space-y-4">
-                {/* Concept map content remains the same */}
                 {conceptsMap.subtopics && conceptsMap.subtopics.length > 0 && (
                   <div className="bg-muted/30 p-4 rounded-md">
                     <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><ListTree className="h-4 w-4 text-muted-foreground"/>Subtopics</h3>
@@ -301,36 +294,23 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
              </TabsContent>
           )}
 
-          {/* Code Insight Tab */}
            {hasCodeAnalysisContent && codeAnalysis && (
              <TabsContent value="code" className="space-y-4">
                {codeAnalysis.learnedConcept && (
-                 <div className="bg-primary/10 dark:bg-primary/5 p-4 rounded-md border border-primary/20 dark:border-primary/30">
-                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground/80"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
+                 <div className="bg-primary/10 dark:bg-primary/20 p-4 rounded-md border border-primary/20 dark:border-primary/50">
+                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
                    <p className="whitespace-pre-wrap text-foreground">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
                  <Card className="bg-muted/10 overflow-hidden">
-                   <CardHeader className="p-3 pb-2 bg-muted/20 border-b relative"> {/* Add relative positioning */}
+                   <CardHeader className="p-3 pb-2 bg-muted/20 border-b">
                      <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
                        <CardTitle className="text-sm font-medium">Final Code Example</CardTitle>
                        {codeAnalysis.codeLanguage && <Badge variant="default" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
                      </div>
                      {codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: {codeAnalysis.codeLanguage}</CardDescription>}
                      {!codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: Not detected</CardDescription>}
-                      {/* Save Code Button */}
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleSaveCode}
-                            disabled={isSavingCode || !codeSnippetExists}
-                            className="absolute top-3 right-3"
-                            aria-label="Save Code Snippet"
-                        >
-                            {isSavingCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                            {isSavingCode ? 'Saving...' : 'Save'}
-                        </Button>
                    </CardHeader>
                    <CardContent className="p-0">
                      <ScrollArea className="max-h-[400px] w-full">
@@ -339,6 +319,19 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                        </pre>
                      </ScrollArea>
                    </CardContent>
+                    <CardFooter className="p-3 border-t bg-muted/20">
+                         <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleSaveCode}
+                            disabled={isSavingCode || !codeSnippetExists}
+                            aria-label="Save Code Snippet"
+                            className="ml-auto"
+                        >
+                            {isSavingCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                            {isSavingCode ? 'Saving...' : 'Save Code'}
+                        </Button>
+                    </CardFooter>
                  </Card>
                )}
                {codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
@@ -354,43 +347,43 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
              </TabsContent>
            )}
 
-           {/* Study Notes Tab */}
            {hasStudyNotesContent && (
                 <TabsContent value="notes">
-                    <div className="bg-secondary/10 p-4 rounded-md border border-secondary/20">
-                        <div className="flex justify-between items-center mb-3">
-                            <h3 className="text-md font-semibold flex items-center gap-2">
-                            <Lightbulb className="h-4 w-4 text-secondary-foreground" />
-                            Study Notes
-                            </h3>
-                            {/* Save Notes Button */}
+                    <Card className="bg-secondary/10 border border-secondary/20">
+                        <CardHeader className="pb-2">
+                            <div className="flex justify-between items-center">
+                                <CardTitle className="text-md flex items-center gap-2">
+                                <Lightbulb className="h-4 w-4 text-secondary-foreground" />
+                                Study Notes
+                                </CardTitle>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            {notesExist ? (
+                                <SimpleMarkdownRenderer content={studyNotes} />
+                            ) : (
+                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
+                            )}
+                        </CardContent>
+                         <CardFooter>
                             <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={handleSaveNotes}
                                 disabled={isSavingNotes || !notesExist}
                                 aria-label="Save Study Notes"
+                                className="ml-auto"
                             >
-                                {isSavingNotes ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                {isSavingNotes ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                 {isSavingNotes ? 'Saving...' : 'Save Notes'}
                             </Button>
-                        </div>
-
-                         {notesExist ? (
-                            <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">
-                                <SimpleMarkdownRenderer content={studyNotes} />
-                            </div>
-                        ) : (
-                            <p className="text-muted-foreground text-sm italic">No study notes were generated.</p>
-                        )}
-                    </div>
+                        </CardFooter>
+                    </Card>
                 </TabsContent>
             )}
 
         </Tabs>
       </CardContent>
-      {/* Optional: Add a general footer if needed */}
-      {/* <CardFooter> ... </CardFooter> */}
     </Card>
   );
 }

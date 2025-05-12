@@ -1,22 +1,20 @@
-
 'use client';
 
 import * as React from 'react';
 import { useActionState, startTransition } from 'react';
 import { ChatInputForm } from '@/components/chat-input-form';
 import { TopicDisplay } from '@/components/topic-display';
-// Remove SaveNotesResult import
 import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions';
-// Remove saveUpdatedNotesAction import
 import { generateQuizTopicsAction } from '@/app/actions';
 import { QuizDisplay } from '@/components/quiz-display';
 import type { QuizTopic } from '@/ai/flows/generate-quiz-topics';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Loader2, Brain, ArrowLeft } from 'lucide-react';
+import { Loader2, Brain, ArrowLeft, BookOpen } from 'lucide-react'; // Added BookOpen
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { CheckCircle, AlertCircle } from 'lucide-react';
+import Link from 'next/link'; // Import Link for navigation
 
 // Initial state for quiz generation action
 const initialQuizState: GenerateQuizResult = { quizTopics: null, error: null };
@@ -33,9 +31,6 @@ const initialAnalysisState: ProcessedConversationResult = {
     originalConversationText: '',
 };
 
-// Removed initial state for saving notes action
-// const initialSaveNotesState: SaveNotesResult = { success: false, error: null, info: null };
-
 
 export default function Home() {
   // State for initial conversation processing
@@ -51,8 +46,6 @@ export default function Home() {
   const [reviewTopics, setReviewTopics] = React.useState<QuizTopic[]>([]);
   const [showQuizSummary, setShowQuizSummary] = React.useState(false);
 
-  // Removed state for saving generated notes
-  // const [saveNotesState, saveNotesFormAction, isSaveNotesPending] = useActionState(saveUpdatedNotesAction, initialSaveNotesState);
 
   const { toast } = useToast();
 
@@ -85,7 +78,6 @@ export default function Home() {
 
         if (processedResults.error) {
             console.error(`[Page] Analysis completed with processing error: ${processedResults.error}`);
-            // Error is displayed in the dedicated error div below the form.
              toast({
                 title: "Analysis Partially Complete",
                 description: `There was an error during analysis: ${processedResults.error}. Some results might be missing.`,
@@ -96,7 +88,7 @@ export default function Home() {
             console.log("[Page] Analysis completed successfully. Notes generated.");
             toast({
                 title: "Analysis Complete",
-                description: "Conversation analyzed. You can now review insights.", // Removed mention of saving notes
+                description: "Conversation analyzed. You can now review insights.",
                 duration: 5000
             });
         } else {
@@ -136,7 +128,6 @@ export default function Home() {
 
     const formData = new FormData();
     formData.append('conversationText', analysisResults.originalConversationText);
-    // Start transition for quiz action
     startTransition(() => {
         generateQuizAction(formData);
     });
@@ -144,10 +135,9 @@ export default function Home() {
 
    // --- Effect to handle Quiz Generation Action Results ---
   React.useEffect(() => {
-    // Only react when the action is no longer pending and the state isn't the initial one
     if (!isQuizActionPending && quizState !== initialQuizState) {
       console.log('[Page Effect] Quiz Generation Action state received:', quizState);
-      setIsGeneratingQuiz(false); // Stop quiz generation loading indicator
+      setIsGeneratingQuiz(false);
 
       if (quizState.error) {
         console.error('[Page Effect] Quiz generation failed:', quizState.error);
@@ -157,8 +147,8 @@ export default function Home() {
       } else if (quizState.quizTopics && quizState.quizTopics.length > 0) {
         console.log('[Page Effect] Quiz topics generated successfully.');
         setQuizTopics(quizState.quizTopics);
-        setIsQuizzing(true); // Start the quiz display
-        setShowQuizSummary(false); // Hide summary if shown before
+        setIsQuizzing(true);
+        setShowQuizSummary(false);
       } else {
          console.log('[Page Effect] No quiz topics could be generated from this conversation.');
          toast({ title: "Quiz Info", description: "Could not generate specific quiz topics from this conversation." });
@@ -174,21 +164,15 @@ export default function Home() {
     console.log('[Page] Quiz completed.');
     setRememberedTopics(remembered);
     setReviewTopics(review);
-    setIsQuizzing(false); // Quiz display hides
-    setShowQuizSummary(true); // Show the summary card
+    setIsQuizzing(false);
+    setShowQuizSummary(true);
   }, []);
-
-  // --- Removed Handler for Triggering Save Generated Notes Action ---
-  // const handleSaveNotes = () => { ... };
-
-  // --- Removed Effect to handle Save Notes Action Results ---
-  // React.useEffect(() => { ... });
 
 
   // --- Handler for going back from Quiz Summary ---
   const handleRestartQuizFlow = () => {
-    setShowQuizSummary(false); // Hide summary
-    setIsQuizzing(false); // Ensure quiz display is hidden
+    setShowQuizSummary(false);
+    setIsQuizzing(false);
   };
 
 
@@ -207,6 +191,14 @@ export default function Home() {
           <p className="text-muted-foreground mt-2">
             Unravel your ChatGPT conversations. Extract topics, analyze code, get study notes, and test your recall.
           </p>
+            <div className="mt-4">
+                <Link href="/learnings" passHref>
+                    <Button variant="outline">
+                        <BookOpen className="mr-2 h-4 w-4" />
+                        View My Learnings
+                    </Button>
+                </Link>
+            </div>
         </header>
 
         {/* Hide input form during quiz or summary */}
@@ -214,8 +206,7 @@ export default function Home() {
             <ChatInputForm
             onProcessingStart={handleAnalysisStart}
             onProcessingComplete={handleAnalysisComplete}
-            isProcessing={isLoadingAnalysis} // Pass loading state
-            // Pass previous text if analysis failed, so user doesn't lose input
+            isProcessing={isLoadingAnalysis}
             initialText={analysisError && analysisResults?.originalConversationText ? analysisResults.originalConversationText : ''}
             />
         )}
@@ -224,30 +215,23 @@ export default function Home() {
         {/* Loading Skeleton */}
         {isLoadingAnalysis && <LoadingSkeleton />}
 
-         {/* Display Analysis Error (if any, show below form, hide during quiz/summary) */}
-         {/* Only show error here if NOT loading AND error exists AND we are NOT quizzing/summarizing */}
          {!isLoadingAnalysis && analysisError && !isQuizzing && !showQuizSummary && (
              <div className="text-center text-red-500 dark:text-red-400 mt-6 p-4 border border-red-500/50 dark:border-red-400/50 bg-red-500/10 dark:bg-red-900/20 rounded-md">
                  Analysis Error: {analysisError}
-                 {/* Optionally add a retry button or hint */}
              </div>
          )}
 
 
-         {/* Display Analysis Results (only if NOT loading, results available, NOT quizzing/summarizing) */}
-         {/* Show results even if there was a processing error (`analysisError` is set), but TopicDisplay handles rendering */}
          {!isLoadingAnalysis && analysisResults && !isQuizzing && !showQuizSummary && (
              <>
                  <TopicDisplay
-                    results={analysisResults} // Pass full results, including potential null fields
-                    // Removed save props: onSaveNotes={handleSaveNotes} isSavingNotes={isSaveNotesPending}
+                    results={analysisResults}
                  />
-                 {/* Conditionally render quiz button only if analysis was successful enough (no processing error and some content exists) */}
                  {!analysisError && (analysisResults.topicsSummary || (analysisResults.keyTopics && analysisResults.keyTopics.length > 0)) && (
                     <div className="text-center mt-6">
                         <Button
                             onClick={handleStartQuizGeneration}
-                            disabled={isGeneratingQuiz || isQuizActionPending} // Disable while quiz is generating/pending
+                            disabled={isGeneratingQuiz || isQuizActionPending}
                         >
                             {(isGeneratingQuiz || isQuizActionPending) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Brain className="mr-2 h-4 w-4" />}
                             {(isGeneratingQuiz || isQuizActionPending) ? 'Generating Quiz...' : 'Start Recall Quiz'}
@@ -275,7 +259,6 @@ export default function Home() {
             />
         )}
 
-        {/* Initial State / Placeholder Message (hide if loading, results available (even with error), quizzing, or showing summary) */}
         {!isLoadingAnalysis && !analysisResults && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-muted-foreground mt-6">
               Enter a conversation above and click Analyze to generate insights.
