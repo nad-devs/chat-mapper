@@ -15,16 +15,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea'; // Import Textarea
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X, CheckSquare } from 'lucide-react'; // Import Edit, Save, X, CheckSquare
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X, CheckSquare } from 'lucide-react';
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
-// Updated Markdown-like renderer to handle checkmark bullets and general styling
+// Simple renderer, assuming summary is now plain text or basic markdown
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+  // Basic rendering, can be enhanced if needed for simple lists/bold
+  return <div className="prose prose-sm dark:prose-invert max-w-none text-foreground whitespace-pre-wrap">{content}</div>;
+};
+
+// Renderer for Study Notes (keeps existing more complex formatting)
+const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
     line = line.trim(); // Trim both ends
@@ -57,9 +63,8 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     if (line.startsWith('## ')) {
       return <h2 key={index} className="text-xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
     }
-    // Handle checkmark bullets (✔)
+    // Handle checkmark bullets (✔) - kept for potential use elsewhere, but not expected in study notes
     if (line.startsWith('✔ ')) {
-        // Wrap content after checkmark, handling potential inline code/bold
         const contentPart = renderBold(line.substring(2));
         return <li key={index} className="ml-5 flex items-start gap-2"><CheckSquare className="h-4 w-4 text-green-500 mt-1 shrink-0" /><span>{contentPart}</span></li>;
     }
@@ -89,18 +94,17 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
    // Group list items correctly
    const groupedElements: React.ReactNode[] = [];
    let currentList: React.ReactNode[] = [];
-   let listType: 'ul' | 'ol' | null = null; // Track list type
+   let listType: 'ul' | 'ol' | null = null;
 
    elements.forEach((el, index) => {
      const isListItem = React.isValidElement(el) && el.type === 'li';
-     const isCheckListItem = isListItem && el.props.children[0]?.type === CheckSquare; // Check if it's our custom checkmark li
+     const isCheckListItem = isListItem && el.props.children[0]?.type === CheckSquare;
 
      if (isListItem) {
        const currentListType = isCheckListItem || el.props.value === undefined ? 'ul' : 'ol';
        if (listType && listType !== currentListType) {
-         // End previous list if type changes
          const ListComponent = listType === 'ol' ? 'ol' : 'ul';
-         const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+         const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && isCheckListItem ? "list-none" : "list-disc");
          groupedElements.push(<ListComponent key={`list-${index}-prev`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
          currentList = [];
          listType = null;
@@ -111,24 +115,21 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
        currentList.push(el);
      } else {
        if (currentList.length > 0 && listType) {
-         // End current list
          const ListComponent = listType === 'ol' ? 'ol' : 'ul';
          const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
          groupedElements.push(<ListComponent key={`list-${index}`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
          currentList = [];
          listType = null;
        }
-       groupedElements.push(el); // Add non-list element
+       groupedElements.push(el);
      }
    });
 
-   // Add any remaining list
    if (currentList.length > 0 && listType) {
      const ListComponent = listType === 'ol' ? 'ol' : 'ul';
-      const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+     const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
      groupedElements.push(<ListComponent key="list-last" className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
    }
-  // Apply base prose styling
    return <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">{groupedElements}</div>;
 };
 
@@ -137,17 +138,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const { toast } = useToast();
   const [saveState, saveFormAction, isSaving] = useActionState(saveEntryAction, null);
 
-  // Use the new learningSummary field
   const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
-  // Derive topicName from various sources, prioritizing code concept or first key topic
   const derivedTopicName = codeAnalysis?.learnedConcept || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : null);
   const defaultTopicName = "Untitled Learning";
   const topicNameToUse = derivedTopicName || defaultTopicName;
-
-
-  // State for editing Learning Summary
-  const [isEditingSummary, setIsEditingSummary] = React.useState(false);
-  const [editedSummary, setEditedSummary] = React.useState(learningSummary || '');
 
   // State for editing Study Notes
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
@@ -155,11 +149,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   // Update local state if the results prop changes (e.g., new analysis)
   React.useEffect(() => {
-    setEditedSummary(learningSummary || '');
     setEditedNotes(studyNotes || '');
-    setIsEditingSummary(false); // Reset editing state on new analysis
-    setIsEditingNotes(false);
-  }, [learningSummary, studyNotes]);
+    setIsEditingNotes(false); // Reset editing state on new analysis
+  }, [studyNotes]);
 
   React.useEffect(() => {
     if (saveState) {
@@ -173,30 +165,34 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
 
   const handleSaveAllInsights = () => {
-    // Use the potentially EDITED local state for saving
-    const topicNameToSave = topicNameToUse; // Use the derived name
+    const topicNameToSave = topicNameToUse;
     const categoryToSave = results.category;
+
+    // Use the potentially EDITED notes, but original summary and code
+    const summaryToSave = results.learningSummary;
+    const codeSnippetToSave = results.codeAnalysis?.finalCodeSnippet;
+    const codeLangToSave = results.codeAnalysis?.codeLanguage;
+    const notesToSave = editedNotes; // Use edited notes
+
 
     const formData = new FormData();
     formData.append('topicName', topicNameToSave);
     if (categoryToSave) {
       formData.append('category', categoryToSave);
     }
-    // Save the potentially edited summary and notes
-    if (editedSummary && editedSummary.trim().length > 0) {
-      formData.append('learningSummary', editedSummary); // Changed field name
+    if (summaryToSave && summaryToSave.trim().length > 0) {
+      formData.append('learningSummary', summaryToSave);
     }
-    if (results.codeAnalysis?.finalCodeSnippet && results.codeAnalysis.finalCodeSnippet.trim().length > 0) {
-      formData.append('codeSnippetContent', results.codeAnalysis.finalCodeSnippet);
-      if (results.codeAnalysis.codeLanguage) {
-        formData.append('codeLanguage', results.codeAnalysis.codeLanguage);
+    if (codeSnippetToSave && codeSnippetToSave.trim().length > 0) {
+      formData.append('codeSnippetContent', codeSnippetToSave);
+      if (codeLangToSave) {
+        formData.append('codeLanguage', codeLangToSave);
       }
     }
-    if (editedNotes && editedNotes.trim().length > 0) {
-      formData.append('studyNotesContent', editedNotes);
+    if (notesToSave && notesToSave.trim().length > 0) {
+      formData.append('studyNotesContent', notesToSave);
     }
 
-    // Check if there's anything to save
     if (!formData.has('learningSummary') && !formData.has('codeSnippetContent') && !formData.has('studyNotesContent')) {
         toast({ title: "Nothing to Save", description: "No content available to save from this analysis." });
         return;
@@ -205,22 +201,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     startTransition(() => {
         saveFormAction(formData);
     });
-  };
-
-  // Handlers for Learning Summary Edit
-  const handleEditSummary = () => {
-    setEditedSummary(learningSummary || ''); // Reset to original on starting edit
-    setIsEditingSummary(true);
-  };
-
-  const handleSaveSummary = () => {
-    // Local save only for display until "Save All Insights" is clicked
-    setIsEditingSummary(false);
-  };
-
-  const handleCancelSummary = () => {
-    setEditedSummary(learningSummary || ''); // Revert to original
-    setIsEditingSummary(false);
   };
 
   // Handlers for Study Notes Edit
@@ -239,12 +219,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     setIsEditingNotes(false);
   };
 
-  // Check content based on edited state
-  const hasOverviewContent = !!editedSummary || (keyTopics && keyTopics.length > 0);
+  // Check content based on *original* results and edited notes state
+  const hasOverviewContent = !!learningSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  const notesExist = editedNotes && editedNotes.trim().length > 0;
-  const hasStudyNotesContent = notesExist || isEditingNotes; // Show tab if notes exist OR if currently editing
+  const notesExist = !!studyNotes && studyNotes.trim().length > 0; // Check original notes
+  const hasStudyNotesContent = notesExist || isEditingNotes;
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
@@ -253,11 +233,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
   ].filter(tab => tab.hasContent);
 
-
-  // Check *potentially edited* content for savable state
-  const anythingToSave = (editedSummary && editedSummary.trim().length > 0) ||
+  // Check content based on *potentially edited* notes and *original* summary/code
+  const anythingToSave = (learningSummary && learningSummary.trim().length > 0) ||
                          (results.codeAnalysis?.finalCodeSnippet && results.codeAnalysis.finalCodeSnippet.trim().length > 0) ||
-                         (editedNotes && editedNotes.trim().length > 0);
+                         (editedNotes && editedNotes.trim().length > 0); // Check edited notes
 
 
   if (availableTabs.length === 0) {
@@ -284,7 +263,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     <Card className="w-full mt-6">
       <CardHeader>
         <CardTitle>Conversation Analysis: {topicNameToUse}</CardTitle>
-        <CardDescription>Explore the insights extracted from the conversation. You can edit the summary and notes locally before saving.</CardDescription>
+        <CardDescription>Explore the insights extracted from the conversation. You can edit study notes locally before saving.</CardDescription>
          {category && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm">
                 <Folder className="h-3 w-3" /> {category}
@@ -306,47 +285,19 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
           {hasOverviewContent && (
             <TabsContent value="overview" className="space-y-4">
-                {/* Learning Summary Section */}
-                <Card className="bg-secondary/30 dark:bg-secondary/10 relative border border-secondary/50 dark:border-secondary/20">
+                {/* Learning Summary Section - Now simpler, no edit button */}
+                <Card className="bg-secondary/30 dark:bg-secondary/10 border border-secondary/50 dark:border-secondary/20">
                     <CardHeader className="pb-2">
-                        <div className="flex justify-between items-center">
-                            <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Learning Summary</CardTitle>
-                            {!isEditingSummary ? (
-                                <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7">
-                                    <Edit className="h-4 w-4" />
-                                    <span className="sr-only">Edit Learning Summary</span>
-                                </Button>
-                            ) : (
-                                <div className="flex gap-1">
-                                    <Button variant="ghost" size="icon" onClick={handleSaveSummary} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
-                                        <Save className="h-4 w-4" />
-                                        <span className="sr-only">Save Learning Summary Edit</span>
-                                    </Button>
-                                    <Button variant="ghost" size="icon" onClick={handleCancelSummary} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
-                                        <X className="h-4 w-4" />
-                                        <span className="sr-only">Cancel Edit Learning Summary</span>
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
+                        <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Learning Summary</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {isEditingSummary ? (
-                            <Textarea
-                                value={editedSummary}
-                                onChange={(e) => setEditedSummary(e.target.value)}
-                                rows={6} // Increased rows for bullet list
-                                className="w-full text-sm bg-background dark:bg-background/80 font-mono" // Use mono for better bullet alignment potentially
-                            />
-                        ) : (
-                            <div className="text-foreground dark:text-foreground/90 text-sm">
-                                {editedSummary && editedSummary.trim().length > 0 ? (
-                                    <SimpleMarkdownRenderer content={editedSummary} />
-                                 ) : (
-                                    <span className="italic text-muted-foreground">No learning summary generated.</span>
-                                )}
-                            </div>
-                        )}
+                        <div className="text-foreground dark:text-foreground/90 text-sm">
+                            {learningSummary && learningSummary.trim().length > 0 ? (
+                                <SimpleMarkdownRenderer content={learningSummary} />
+                             ) : (
+                                <span className="italic text-muted-foreground">No learning summary generated.</span>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -422,9 +373,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                        <CardTitle className="text-sm font-medium">Final Code Example</CardTitle>
                        {codeAnalysis.codeLanguage && <Badge variant="default" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
                      </div>
-                     {/* Removed redundant language display from CardDescription */}
-                     {/* {codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: {codeAnalysis.codeLanguage}</CardDescription>} */}
-                     {/* {!codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: Not detected</CardDescription>} */}
                    </CardHeader>
                    <CardContent className="p-0">
                      <ScrollArea className="max-h-[400px] w-full">
@@ -486,8 +434,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                     className="w-full text-sm bg-background dark:bg-background/80"
                                     placeholder="Enter study notes here..."
                                 />
-                            ) : notesExist ? (
-                                <SimpleMarkdownRenderer content={editedNotes} />
+                             ) : notesExist || editedNotes.trim().length > 0 ? ( // Show edited notes even if original was empty
+                                <StudyNotesRenderer content={editedNotes} />
                             ) : (
                                 <p className="text-muted-foreground text-sm italic p-4">No study notes were generated for this conversation.</p>
                             )}
