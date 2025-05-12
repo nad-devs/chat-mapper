@@ -1,5 +1,5 @@
 
-import { genkit, LogLevel } from 'genkit'; // Import LogLevel if needed
+import { genkit } from 'genkit'; // Remove LogLevel import as it's not used here
 import { googleAI } from '@genkit-ai/googleai';
 
 // Ensure GOOGLE_API_KEY is available in the environment variables
@@ -14,7 +14,7 @@ export const ai = genkit({
   ],
   // Use the desired model, ensure it supports the required capabilities (function calling/structured output)
   // 'gemini-1.5-flash-latest' or 'gemini-1.5-pro-latest' are good choices
-  model: 'googleai/gemini-1.5-flash-latest',
-  logLevel: process.env.NODE_ENV === 'development' ? LogLevel.DEBUG : LogLevel.INFO, // Optional: Set log level
-  enableTracing: true, // Optional: Enable tracing
+  // model: 'googleai/gemini-1.5-flash-latest', // Model can often be specified per-call if needed
+  // logLevel and enableTracing removed as per Genkit 1.x guidelines for genkit()
 });
+
