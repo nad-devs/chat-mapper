@@ -19,7 +19,7 @@ export default function Home() {
   const handleProcessingComplete = React.useCallback((processedResults: ProcessedConversationResult | null) => {
     console.log('[Page] Processing complete. Results:', processedResults); // Log completion
     setResults(processedResults);
-    setIsLoading(false); // Ensure loading is set to false
+    setIsLoading(false); // Explicitly set loading to false here
   }, []);
 
 
@@ -46,12 +46,14 @@ export default function Home() {
         />
 
         {isLoading && <LoadingSkeleton />}
-        {/* Ensure results are only displayed when not loading AND results exist */}
+        {/* Display results only when not loading AND results exist */}
         {!isLoading && results && <TopicDisplay results={results} />}
-        {/* Optional: Handle case where not loading but results are null/empty explicitly */}
-        {/* {!isLoading && !results && <div>Enter a conversation above and click Analyze.</div>} */}
-        {/* {!isLoading && results && !results.topicsSummary && !(results.keyTopics?.length > 0) && !results.conceptsMap && !(results.codeAnalysis?.codeExamples?.length > 0) && <div>Analysis complete, but no specific information found.</div>} */}
-
+         {/* Display a message if not loading and results are null (initial state or after error clear) */}
+        {!isLoading && !results && (
+            <div className="text-center text-muted-foreground mt-6">
+              Enter a conversation above and click Analyze to see the results.
+            </div>
+        )}
 
       </div>
     </main>

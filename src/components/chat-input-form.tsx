@@ -42,7 +42,8 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
 
   React.useEffect(() => {
     // Only proceed if state is not null (meaning the action has returned)
-    if (!state) return;
+    // And only if it's not the initial state (to avoid showing toast on load)
+    if (!state || state === initialState) return;
 
     console.log('[Form Effect] Action state received:', state); // Log state received
 
@@ -59,30 +60,33 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
       const hasData = state.topicsSummary ||
                       (state.keyTopics && state.keyTopics.length > 0) ||
                       state.conceptsMap ||
-                      (state.codeAnalysis && state.codeAnalysis.codeExamples.length > 0);
+                      (state.codeAnalysis && (state.codeAnalysis.learnedConcept || state.codeAnalysis.finalCodeSnippet)); // Updated check for codeAnalysis
 
       if (hasData) {
           console.log('[Form Effect] Action successful with data.'); // Log success with data
       } else {
-          console.log('[Form Effect] Action successful, but no data found.'); // Log success no data
+          console.log('[Form Effect] Action successful, but no significant data found.'); // Log success no data
           // Optionally show a different toast or message here if desired
-          // toast({ title: "Analysis Complete", description: "No specific topics, concepts, or code found." });
+          toast({ title: "Analysis Complete", description: "No specific topics, concepts, or code insights found." });
       }
       onProcessingComplete(state); // Pass the result state (even if empty)
       // Optionally reset form after successful submission
       // formRef.current?.reset();
     }
-  }, [state, onProcessingComplete, toast]); // Dependencies remain the same
+    // It's important that onProcessingComplete is called *after* the state update from the action,
+    // so the dependency array should include `state`.
+  }, [state, onProcessingComplete, toast]);
 
 
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault(); // Prevent default form submission
-      console.log('[Form Submit] Form submitted.'); // Log form submission
+      // DO NOT prevent default. Let the form submit naturally via the `action` prop.
+      // event.preventDefault();
+      console.log('[Form Submit] Form submitted. Triggering onProcessingStart.'); // Log form submission
       onProcessingStart();
-      // Manually call the form action with the form data
-      const formData = new FormData(event.currentTarget);
-      console.log('[Form Submit] Calling formAction with formData:', formData.get('conversationText')?.substring(0, 100) + '...'); // Log action call
-      formAction(formData);
+      // DO NOT call formAction manually here. The `action` prop handles it.
+      // const formData = new FormData(event.currentTarget);
+      // console.log('[Form Submit] Calling formAction with formData:', formData.get('conversationText')?.substring(0, 100) + '...'); // Log action call
+      // formAction(formData);
   };
 
 
@@ -92,8 +96,12 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
         <CardTitle>Input Conversation</CardTitle>
         <CardDescription>Paste your full ChatGPT conversation below.</CardDescription>
       </CardHeader>
-      {/* Removed form action prop, handle submission manually */}
-      <form ref={formRef} onSubmit={handleFormSubmit}>
+      {/* Use the `action` prop for the form */}
+      <form
+        ref={formRef}
+        action={formAction} // Pass the action function here
+        onSubmit={handleFormSubmit} // Call onProcessingStart here
+      >
         <CardContent>
           <div className="grid w-full gap-1.5">
             <Label htmlFor="conversationText">Conversation Text</Label>
@@ -105,7 +113,7 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
               required
               aria-describedby="conversation-error"
             />
-            {/* Display error from state if present */}
+            {/* Display error from state if present and not the initial state error */}
             {state?.error && <p id="conversation-error" className="text-sm font-medium text-destructive">{state.error}</p>}
           </div>
         </CardContent>
