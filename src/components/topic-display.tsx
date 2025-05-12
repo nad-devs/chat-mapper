@@ -16,36 +16,73 @@ interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
-// Simple Markdown-like renderer (basic bold and list support)
+// Simple Markdown-like renderer (basic bold, list, H3, inline code support)
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
     line = line.trim();
+
+    // Inline code ticks: `code` becomes <code>code</code>
+    const renderInlineCode = (text: string) => {
+      const parts = text.split(/(`.*?`)/g);
+      return parts.map((part, partIndex) => {
+        if (part.startsWith('`') && part.endsWith('`')) {
+          return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono">{part.substring(1, part.length - 1)}</code>;
+        }
+        return part;
+      });
+    };
+
+     // Basic bold support: **bold** becomes <strong>bold</strong>
+    const renderBold = (text: string) => {
+        const parts = text.split(/(\*\*.*?\*\*)/g);
+        return parts.map((part, partIndex) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+            return <strong key={partIndex}>{renderInlineCode(part.substring(2, part.length - 2))}</strong>;
+        }
+        return renderInlineCode(part);
+        });
+    };
+
+    if (line.startsWith('## ')) {
+      // H3 headings
+      return <h3 key={index} className="text-lg font-semibold mt-3 mb-2">{renderBold(line.substring(3))}</h3>;
+    }
     if (line.startsWith('* ') || line.startsWith('- ')) {
       // Basic bullet points
-      return <li key={index} className="ml-4 list-disc">{line.substring(2)}</li>;
+      return <li key={index} className="ml-4 list-disc">{renderBold(line.substring(2))}</li>;
     }
-    // Basic bold support
-    const parts = line.split(/(\*\*.*?\*\*)/g);
+
+    // Regular paragraph with bold and inline code support
     return (
       <p key={index} className="mb-2 last:mb-0">
-        {parts.map((part, partIndex) => {
-          if (part.startsWith('**') && part.endsWith('**')) {
-            return <strong key={partIndex}>{part.substring(2, part.length - 2)}</strong>;
-          }
-          return part;
-        })}
+        {renderBold(line)}
       </p>
     );
   });
 
-  // Wrap list items in a <ul> if any exist
-  const hasListItems = elements.some(el => el.type === 'li');
-  if (hasListItems) {
-    return <ul className="space-y-1">{elements}</ul>;
-  }
+  // Wrap list items in a <ul> if they are consecutive
+   const groupedElements = [];
+   let currentList: React.ReactNode[] = [];
 
-  return <>{elements}</>;
+   elements.forEach((el, index) => {
+     if (React.isValidElement(el) && el.type === 'li') {
+       currentList.push(el);
+     } else {
+       if (currentList.length > 0) {
+         groupedElements.push(<ul key={`ul-${index}`} className="space-y-1 mb-2">{currentList}</ul>);
+         currentList = [];
+       }
+       groupedElements.push(el);
+     }
+   });
+
+   // Add any remaining list items
+   if (currentList.length > 0) {
+     groupedElements.push(<ul key="ul-last" className="space-y-1 mb-2">{currentList}</ul>);
+   }
+
+  return <>{groupedElements}</>;
 };
 
 
@@ -171,7 +208,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                {codeAnalysis.learnedConcept && (
                  <div className="bg-accent/10 p-4 rounded-md">
                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-accent"/>Concept Learned / Problem Solved</h3>
-                   <p className="text-accent-foreground whitespace-pre-wrap">{codeAnalysis.learnedConcept}</p>
+                   {/* Removed text-accent-foreground to improve contrast */}
+                   <p className="whitespace-pre-wrap">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
@@ -214,7 +252,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                            <Lightbulb className="h-4 w-4 text-primary-foreground" />
                            Study Notes {/* Updated title */}
                         </h3>
-                        <div className="text-primary-foreground prose prose-sm max-w-none prose-strong:text-primary-foreground prose-li:marker:text-primary-foreground">
+                        {/* Updated prose classes for better styling */}
+                        <div className="text-primary-foreground prose prose-sm dark:prose-invert max-w-none prose-headings:text-primary-foreground prose-strong:text-primary-foreground prose-code:text-primary-foreground prose-code:bg-primary/20 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-li:marker:text-primary-foreground">
                             <SimpleMarkdownRenderer content={studyNotes} /> {/* Updated field name */}
                         </div>
                     </div>

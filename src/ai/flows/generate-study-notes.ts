@@ -23,7 +23,7 @@ const GenerateStudyNotesOutputSchema = z.object({
   studyNotes: z
     .string()
     .describe(
-      'Concise study notes summarizing the main concepts, key points, and important takeaways learned or discussed in the conversation. Formatted potentially using Markdown for readability (e.g., bullet points, bold text). If the conversation is too brief or lacks substantial content, this should be an empty string or a brief message indicating such.'
+      'Concise study notes summarizing the main concepts, key points, and important takeaways learned or discussed in the conversation. Formatted using Markdown for readability (e.g., H3 headings `##`, bullet points `*` or `-`, bold `**`, inline code `` ` ``). If the conversation is too brief or lacks substantial content, this should be an empty string or a brief message indicating such.'
     ),
 });
 export type GenerateStudyNotesOutput = z.infer<
@@ -48,18 +48,23 @@ const prompt = ai.definePrompt({
   model: 'googleai/gemini-1.5-flash-latest',
   input: {schema: GenerateStudyNotesInputSchema},
   output: {schema: GenerateStudyNotesOutputSchema},
-  prompt: `You are an expert study assistant skilled at synthesizing information from conversations.
+  prompt: `You are an expert study assistant skilled at synthesizing information from conversations into clear, structured study notes.
 
   Analyze the following conversation text:
   {{{conversationText}}}
 
   Your task is to:
   1. Identify the main concepts, key programming techniques, important definitions, problem-solving steps, or significant takeaways discussed in the conversation.
-  2. Generate concise study notes summarizing these points. Focus on capturing the essence of what was learned or explained.
-  3. Combine these notes into a single string in the "studyNotes" field. Use simple Markdown for formatting (like bullet points '*' or '-' and bold text '**') if it enhances clarity and organization. Structure the notes logically.
-  4. **If the conversation is very short, lacks specific technical/conceptual content, or is purely conversational, return an empty string ("") for the "studyNotes" field.** Do not invent content.
+  2. Generate concise study notes summarizing these points. Focus on capturing the essence of what was learned or explained clearly and accurately.
+  3. Format the notes using Markdown for optimal readability and structure:
+     - Use H3 headings (\`## \`) for main concepts or distinct sections.
+     - Use bullet points (\`* \` or \`- \`) for details, steps, or lists.
+     - Use bold text (\`**text**\`) for emphasis on key terms or important points.
+     - Use inline code ticks (\`\` \`code\` \`\`) for code snippets, variable names, function names, or technical terms where appropriate.
+  4. Combine these formatted notes into a single string in the "studyNotes" field. Ensure the notes are well-organized and flow logically.
+  5. **If the conversation is very short, lacks specific technical/conceptual content, or is purely conversational, return an empty string ("") for the "studyNotes" field.** Do not invent content.
 
-  Aim for notes that would be helpful for someone reviewing the key information from the conversation later. Avoid conversational filler or commentary about user understanding unless it's directly relevant to a key point.
+  Aim for notes that serve as an effective summary for someone reviewing the key information from the conversation later. Avoid conversational filler.
 `,
   // Optional: Configure safety settings if needed
   // config: {
@@ -85,3 +90,4 @@ const generateStudyNotesFlow = ai.defineFlow(
     return { studyNotes: output.studyNotes || "" };
   }
 );
+
