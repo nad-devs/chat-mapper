@@ -14,6 +14,10 @@ const GenerateStudyNotesInputSchema = z.object({
   conversationText: z
     .string()
     .describe('The full text of the ChatGPT conversation.'),
+  // Optional: Pass learned concept and code snippet if already extracted
+  learnedConcept: z.string().optional().nullable().describe('The main concept learned/problem solved, if pre-analyzed.'),
+  finalCodeSnippet: z.string().optional().nullable().describe('The final code snippet, if pre-analyzed.'),
+  codeLanguage: z.string().optional().nullable().describe('The language of the code snippet, if pre-analyzed.')
 });
 export type GenerateStudyNotesInput = z.infer<
   typeof GenerateStudyNotesInputSchema
@@ -23,7 +27,7 @@ const GenerateStudyNotesOutputSchema = z.object({
   studyNotes: z
     .string()
     .describe(
-      'Concise study notes summarizing the main concepts, key points, and important takeaways learned or discussed in the conversation. Formatted using Markdown for readability (e.g., H3 headings `##`, bullet points `*` or `-`, bold `**`, inline code `` ` ``). If the conversation is too brief or lacks substantial content, this should be an empty string or a brief message indicating such.'
+      'Compact, well-formatted study sheet based *only* on the technical content of the conversation. Follows the structure: Problem Definition, Algorithm Outline, Annotated Python Solution (or relevant language). No mention of learner struggles. Uses Markdown.'
     ),
 });
 export type GenerateStudyNotesOutput = z.infer<
@@ -48,39 +52,50 @@ const prompt = ai.definePrompt({
   model: 'googleai/gemini-1.5-flash-latest',
   input: {schema: GenerateStudyNotesInputSchema},
   output: {schema: GenerateStudyNotesOutputSchema},
-  prompt: `You are an expert study assistant skilled at synthesizing information from conversations into clear, structured study notes.
+  prompt: `You are ChatGPT, a senior learning-design specialist.
+Analyze the entire conversation text provided below. Your task is to create a compact, well-formatted study sheet that the learner can review later. **This sheet should contain ONLY the technical reference material derived from the conversation.**
 
-  Analyze the following conversation text:
-  {{{conversationText}}}
+Conversation Text:
+{{{conversationText}}}
 
-  Your task is to:
-  1. Identify the main concepts, key programming techniques, important definitions, problem-solving steps, or significant takeaways discussed in the conversation.
-  2. Generate concise study notes summarizing these points. Focus on capturing the essence of what was learned or explained clearly and accurately.
-  3. Format the notes using Markdown for optimal readability and structure:
-     - Use H3 headings (\`## \`) for main concepts or distinct sections.
-     - Use bullet points (\`* \` or \`- \`) for details, steps, or lists.
-     - Use bold text (\`**text**\`) for emphasis on key terms or important points.
-     - Use inline code ticks (\`\` \`code\` \`\`) for code snippets, variable names, function names, or technical terms where appropriate.
-  4. Combine these formatted notes into a single string in the "studyNotes" field. Ensure the notes are well-organized and flow logically.
-  5. **If the conversation is very short, lacks specific technical/conceptual content, or is purely conversational, return an empty string ("") for the "studyNotes" field.** Do not invent content.
+{{#if learnedConcept}}
+Previously Identified Concept: {{{learnedConcept}}}
+{{/if}}
+{{#if finalCodeSnippet}}
+Previously Identified Code Snippet:
+\`\`\`{{#if codeLanguage}}{{{codeLanguage}}}{{/if}}
+{{{finalCodeSnippet}}}
+\`\`\`
+{{/if}}
 
-  Aim for notes that serve as an effective summary for someone reviewing the key information from the conversation later. Avoid conversational filler.
+Instructions for **Study Notes**:
+1.  **Structure:** Format the output *exactly* as follows using Markdown. Omit a subsection ONLY if the information is genuinely absent in the conversation.
+    *   Use H3 headings (\`### \`) for "Problem Definition", "Algorithm Outline", and "Annotated Solution".
+    *   Use bullet points (\`* \` or \`- \`) or numbered lists (\`1. \`) as appropriate under each heading.
+2.  **Content:**
+    *   **### Problem Definition:** Write one crisp sentence naming the specific problem discussed (e.g., "Contains Duplicate", "Valid Anagram") and its objective. Extract this from the conversation.
+    *   **### Algorithm Outline:** List the key steps of the *final or agreed-upon algorithm* discussed for solving the problem. Extract or synthesize these steps from the conversation.
+    *   **### Annotated Solution:** Include the *final or most complete code snippet* presented in the conversation.
+        *   If a \`finalCodeSnippet\` was provided in the input, use that. Otherwise, extract it from the \`conversationText\`.
+        *   If no code snippet is present in the conversation, state "No specific code solution provided in the conversation." under this heading.
+        *   If a code snippet *is* included, add brief, clear inline comments (\`# comment\` for Python, \`// comment\` for JS/Java/C++, etc.) explaining each crucial step or line of the code, based on the explanation given *in the conversation*. Use the language identified (\`codeLanguage\` input) or detect it if necessary.
+3.  **Restrictions:**
+    *   **DO NOT** mention the learner's struggles, learning journey, thought process, or any conversational back-and-forth in this Study Notes section.
+    *   Keep the notes concise and focused purely on the technical information and the final solution.
+    *   If the conversation doesn't contain a clear technical problem, algorithm, or code, make the relevant sections brief or indicate the absence of information (e.g., "Algorithm not applicable.", "No specific code solution provided."). If the entire conversation lacks technical substance for notes, return a brief message like "No specific technical content suitable for study notes was found."
+
+Return the formatted study notes as a single Markdown string in the "studyNotes" field.
 `,
-  // Optional: Configure safety settings if needed
-  // config: {
-  //   safetySettings: [
-  //     // ... settings
-  //   ],
-  // },
 });
 
 const generateStudyNotesFlow = ai.defineFlow(
   {
     name: 'generateStudyNotesFlow',
-    inputSchema: GenerateStudyNotesInputSchema,
-    outputSchema: GenerateStudyNotesOutputSchema,
-  },
+    inputSchema: GenerateStudyNotesInputSchema},
   async input => {
+    // Note: This flow now takes optional pre-analyzed code info,
+    // but the prompt is designed to work even if it's not provided,
+    // extracting info directly from the conversation text.
     const {output} = await prompt(input);
     // Ensure output is not null before returning, otherwise return a default structure
     if (!output) {
@@ -90,4 +105,3 @@ const generateStudyNotesFlow = ai.defineFlow(
     return { studyNotes: output.studyNotes || "" };
   }
 );
-

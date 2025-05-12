@@ -1,4 +1,3 @@
-
 'use server';
 
 import { z } from 'zod';
@@ -16,8 +15,8 @@ import { collection, addDoc, getDocs, query, orderBy, Timestamp } from 'firebase
 // Updated structure for storing entries in Firestore as a single document per conversation analysis
 export interface LearningEntry {
   id?: string; // Firestore ID
-  topicName: string;
-  summaryContent?: string | null;
+  topicName: string; // Primary topic/concept name for display
+  learningSummary?: string | null; // The new bulleted list summary
   codeSnippetContent?: string | null;
   codeLanguage?: string | null;
   studyNotesContent?: string | null;
@@ -31,10 +30,10 @@ const processConversationInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
 });
 
-// Result type for the main processing action
+// Result type for the main processing action - updated topicsSummary to learningSummary
 export type ProcessedConversationResult = {
   originalConversationText: string;
-  topicsSummary: string | null;
+  learningSummary: string | null; // Changed from topicsSummary
   keyTopics: string[] | null;
   category: string | null;
   conceptsMap: MapConceptsOutput | null;
@@ -51,9 +50,9 @@ export async function processConversation(
 ): Promise<ProcessedConversationResult> {
   console.log('[Action] processConversation started.');
 
-   // Default error state
+   // Default error state - updated field name
   const defaultErrorState = (message: string, conversationText: string = ''): ProcessedConversationResult => ({
-    topicsSummary: null,
+    learningSummary: null, // Changed from topicsSummary
     keyTopics: null,
     category: null,
     conceptsMap: null,
@@ -91,7 +90,18 @@ export async function processConversation(
         settledResults = await Promise.allSettled([
             summarizeTopics({ conversation: conversationText }),
             analyzeCodeConceptAndFinalExample({ conversationText: conversationText }),
+            // Pass code analysis results to study notes if available? Or let study notes extract it?
+            // Let's keep it simple first: generate study notes independently
             generateStudyNotes({ conversationText: conversationText })
+            // If we want to pass code results:
+            // analyzeCodeConceptAndFinalExample({ conversationText: conversationText }).then(codeRes => {
+            //     return generateStudyNotes({
+            //         conversationText: conversationText,
+            //         learnedConcept: codeRes?.learnedConcept,
+            //         finalCodeSnippet: codeRes?.finalCodeSnippet,
+            //         codeLanguage: codeRes?.codeLanguage
+            //     });
+            // }) // This approach complicates Promise.allSettled
         ]);
     } catch (aiError: any) {
          const errorMsg = `Failed to initiate AI processing: ${aiError.message}`;
@@ -121,25 +131,31 @@ export async function processConversation(
 
     summaryData = getResultOrNull(settledResults[0], 'Summarize Topics');
     codeAnalysisData = getResultOrNull(settledResults[1], 'Analyze Code');
+    // If generateStudyNotes was run independently:
     studyNotesData = getResultOrNull(settledResults[2], 'Generate Study Notes');
+    // If generateStudyNotes depended on analyzeCode (more complex setup needed):
+    // studyNotesData = getResultOrNull(settledResults[2], 'Generate Study Notes');
 
     if (processingError) {
         console.warn(`[Action] Proceeding with partial results due to AI error: ${processingError}`);
     }
 
-    const topicsSummary = summaryData?.summary ?? null;
+    const learningSummary = summaryData?.learningSummary ?? null; // Changed from topicsSummary
     const keyTopics = summaryData?.keyTopics ?? null;
     const category = summaryData?.category ?? null;
-    const codeAnalysis = codeAnalysisData;
+    const codeAnalysis = codeAnalysisData; // Keep full code analysis object
     const studyNotes = studyNotesData?.studyNotes ?? null;
 
     console.log('[Action] AI results processed.');
 
-    // Concept Mapping (depends on summary)
-    if (topicsSummary && topicsSummary.trim().length > 0) {
-         console.log('[Action] Starting Concept Mapping...');
+    // Concept Mapping (depends on having some summary/topic identification)
+    // Decide if concept mapping should use learningSummary or keyTopics
+    // Let's use keyTopics if available, otherwise learningSummary (if it's concise enough)
+    const mainTopicForMapping = keyTopics && keyTopics.length > 0 ? keyTopics.join(', ') : (learningSummary || '');
+    if (mainTopicForMapping.trim().length > 0) {
+         console.log('[Action] Starting Concept Mapping based on:', mainTopicForMapping.substring(0, 100));
          const mapInput: MapConceptsInput = {
-             mainTopic: topicsSummary,
+             mainTopic: mainTopicForMapping, // Use derived topic
              conversationText: conversationText,
          };
          try {
@@ -154,7 +170,7 @@ export async function processConversation(
              }
          }
      } else {
-         console.log('[Action] Skipping Concept Mapping due to missing or empty summary.');
+         console.log('[Action] Skipping Concept Mapping due to missing topics/summary.');
          conceptsMap = null;
      }
 
@@ -163,7 +179,7 @@ export async function processConversation(
 
     const analysisResult: ProcessedConversationResult = {
       originalConversationText: conversationText,
-      topicsSummary: topicsSummary,
+      learningSummary: learningSummary, // Changed field
       keyTopics: keyTopics,
       category: category,
       conceptsMap: conceptsMap,
@@ -186,11 +202,13 @@ export async function processConversation(
         console.error("[Action] Error stringifying analysis result:", stringifyError);
         const errorMsg = `Failed to serialize analysis results: ${stringifyError.message}`;
         try {
+            // Use the updated defaultErrorState
             return JSON.parse(JSON.stringify(defaultErrorState(errorMsg, conversationText)));
         } catch (innerStringifyError) {
              console.error("[Action] Error stringifying the default error state after another stringify error:", innerStringifyError);
+             // Use updated field name here too
              return {
-                 topicsSummary: null, keyTopics: null, category: null, conceptsMap: null,
+                 learningSummary: null, keyTopics: null, category: null, conceptsMap: null,
                  codeAnalysis: null, studyNotes: null, originalConversationText: conversationText,
                  error: "Analysis failed and result could not be serialized."
              };
@@ -203,11 +221,13 @@ export async function processConversation(
     console.error('[Action] Unexpected top-level error in processConversation:', errorMessage);
     if (error.stack) console.error(error.stack);
     try {
+      // Use the updated defaultErrorState
       return JSON.parse(JSON.stringify(defaultErrorState(`Processing failed unexpectedly: ${errorMessage}`, conversationText)));
     } catch (stringifyError) {
         console.error("[Action] Error stringifying the top-level error state:", stringifyError);
+        // Use updated field name here too
         return {
-            topicsSummary: null, keyTopics: null, category: null, conceptsMap: null,
+            learningSummary: null, keyTopics: null, category: null, conceptsMap: null,
             codeAnalysis: null, studyNotes: null, originalConversationText: conversationText,
             error: "Processing failed unexpectedly and error state could not be serialized."
         };
@@ -291,15 +311,17 @@ export async function generateQuizTopicsAction(
 
 // --- Action for Saving a Single Learning Entry (containing all insights) ---
 
+// Updated schema to reflect the new learningSummary field
 const saveEntryInputSchema = z.object({
   topicName: z.string().min(1, 'Topic name cannot be empty.'),
-  summaryContent: z.string().optional().nullable(),
+  learningSummary: z.string().optional().nullable(), // Changed from summaryContent
   codeSnippetContent: z.string().optional().nullable(),
   codeLanguage: z.string().optional().nullable(),
   studyNotesContent: z.string().optional().nullable(),
   category: z.string().nullable().optional(),
 }).refine(
-  (data) => !!data.summaryContent || !!data.codeSnippetContent || !!data.studyNotesContent,
+  // Check if at least one of the main content fields is provided
+  (data) => !!data.learningSummary || !!data.codeSnippetContent || !!data.studyNotesContent,
   { message: "At least one piece of content (summary, code, or notes) must be provided to save." }
 );
 
@@ -316,9 +338,10 @@ export async function saveEntryAction(
 ): Promise<SaveEntryResult> {
     console.log('[Action] saveEntryAction started.');
 
+    // Updated field name here
     const validatedFields = saveEntryInputSchema.safeParse({
         topicName: formData.get('topicName'),
-        summaryContent: formData.get('summaryContent'),
+        learningSummary: formData.get('learningSummary'), // Changed field
         codeSnippetContent: formData.get('codeSnippetContent'),
         codeLanguage: formData.get('codeLanguage'),
         studyNotesContent: formData.get('studyNotesContent'),
@@ -334,7 +357,7 @@ export async function saveEntryAction(
 
     const {
         topicName,
-        summaryContent,
+        learningSummary, // Changed variable name
         codeSnippetContent,
         codeLanguage,
         studyNotesContent,
@@ -348,7 +371,8 @@ export async function saveEntryAction(
             topicName: topicName,
             category: category ?? null,
         };
-        if (summaryContent) entryToSave.summaryContent = summaryContent;
+        // Update field names used for saving
+        if (learningSummary) entryToSave.learningSummary = learningSummary; // Changed field
         if (codeSnippetContent) entryToSave.codeSnippetContent = codeSnippetContent;
         if (codeLanguage && codeSnippetContent) entryToSave.codeLanguage = codeLanguage; // Only save language if snippet exists
         if (studyNotesContent) entryToSave.studyNotesContent = studyNotesContent;
@@ -391,7 +415,7 @@ export async function getLearningEntriesAction(): Promise<GetLearningEntriesResu
             entries.push({
                 id: doc.id,
                 topicName: data.topicName,
-                summaryContent: data.summaryContent ?? null,
+                learningSummary: data.learningSummary ?? null, // Changed field
                 codeSnippetContent: data.codeSnippetContent ?? null,
                 codeLanguage: data.codeLanguage ?? null,
                 studyNotesContent: data.studyNotesContent ?? null,
@@ -413,5 +437,3 @@ export async function getLearningEntriesAction(): Promise<GetLearningEntriesResu
         return JSON.parse(JSON.stringify({ entries: null, error: `Failed to fetch learning entries: ${errorMessage}` }));
     }
 }
-
-    

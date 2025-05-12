@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -9,19 +8,20 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive, CheckSquare } from 'lucide-react'; // Added CheckSquare
 import Link from 'next/link';
 import { format, isSameDay } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
-// Simple Markdown-like renderer
+// Updated Markdown-like renderer to handle checkmark bullets and general styling
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
-    line = line.trimStart().trimEnd();
+    line = line.trim(); // Trim both ends
 
+    // Render inline code `` `code` ``
     const renderInlineCode = (text: string) => {
         const parts = text.split(/(`[^`]+`)/);
         return parts.map((part, partIndex) => {
@@ -32,6 +32,7 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         });
     };
 
+    // Render bold **text**
     const renderBold = (text: string) => {
         const parts = text.split(/(\*\*.*?\*\*)/g);
         return parts.map((part, partIndex) => {
@@ -43,17 +44,31 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     };
 
     if (line.startsWith('### ')) {
-      return <h3 key={index} className="text-xl font-semibold mt-4 mb-2">{renderBold(line.substring(4))}</h3>;
+      return <h3 key={index} className="text-lg font-semibold mt-4 mb-2">{renderBold(line.substring(4))}</h3>;
     }
-     if (line.startsWith('## ')) {
-      return <h2 key={index} className="text-2xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
+    if (line.startsWith('## ')) {
+      return <h2 key={index} className="text-xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
     }
+    // Handle checkmark bullets (✔)
+    if (line.startsWith('✔ ')) {
+        return <li key={index} className="ml-5 flex items-start gap-2"><CheckSquare className="h-4 w-4 text-green-500 mt-1 shrink-0" /><span>{renderBold(line.substring(2))}</span></li>;
+    }
+    // Handle regular bullets (* or -)
     if (line.startsWith('* ') || line.startsWith('- ')) {
-      return <li key={index} className="ml-4">{renderBold(line.substring(2))}</li>;
+      return <li key={index} className="ml-5">{renderBold(line.substring(2))}</li>;
     }
+    // Handle numbered lists (1.)
+    if (/^\d+\.\s/.test(line)) {
+         const match = line.match(/^(\d+\.\s)(.*)/);
+         if (match) {
+            return <li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>;
+         }
+    }
+    // Handle empty lines as breaks
     if (line === '') {
         return <br key={index} />;
     }
+    // Default paragraph rendering
     return (
       <p key={index} className="mb-2 last:mb-0">
         {renderBold(line)}
@@ -61,27 +76,52 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     );
   });
 
+   // Group list items correctly
    const groupedElements: React.ReactNode[] = [];
    let currentList: React.ReactNode[] = [];
+   let listType: 'ul' | 'ol' | null = null; // Track list type
 
    elements.forEach((el, index) => {
      const isListItem = React.isValidElement(el) && el.type === 'li';
+     const isCheckListItem = isListItem && el.props.children[0]?.type === CheckSquare; // Check if it's our custom checkmark li
+
      if (isListItem) {
+       const currentListType = isCheckListItem || el.props.value === undefined ? 'ul' : 'ol';
+       if (listType && listType !== currentListType) {
+         // End previous list if type changes
+         const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+         const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+         groupedElements.push(<ListComponent key={`list-${index}-prev`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
+         currentList = [];
+         listType = null;
+       }
+       if (!listType) {
+         listType = currentListType;
+       }
        currentList.push(el);
      } else {
-       if (currentList.length > 0) {
-         groupedElements.push(<ul key={`ul-${index}`} className="space-y-1 mb-2 list-disc pl-5">{currentList}</ul>);
+       if (currentList.length > 0 && listType) {
+         // End current list
+         const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+          const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+         groupedElements.push(<ListComponent key={`list-${index}`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
          currentList = [];
+         listType = null;
        }
-       groupedElements.push(el);
+       groupedElements.push(el); // Add non-list element
      }
    });
 
-   if (currentList.length > 0) {
-     groupedElements.push(<ul key="ul-last" className="space-y-1 mb-2 list-disc pl-5">{currentList}</ul>);
+   // Add any remaining list
+   if (currentList.length > 0 && listType) {
+     const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+     const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+     groupedElements.push(<ListComponent key="list-last" className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
    }
-  return <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">{groupedElements}</div>;
+  // Apply base prose styling
+  return <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">{groupedElements}</div>;
 };
+
 
 // Define the type for grouped learnings
 type GroupedLearnings = Record<string, LearningEntry[]>;
@@ -291,16 +331,20 @@ export default function LearningsPage() {
                                             </CardDescription>
                                             )}
                                         </CardHeader>
-                                        <CardContent className="p-3 space-y-3">
-                                            {entry.summaryContent && (
+                                        <CardContent className="p-3 space-y-4">
+                                            {/* Updated to display learningSummary */}
+                                            {entry.learningSummary && (
                                                 <div>
-                                                    <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-secondary-foreground"><FileText className="h-4 w-4" /> Summary</h4>
-                                                    <p className="text-sm text-foreground/90 bg-secondary/30 dark:bg-secondary/10 p-2 rounded-md border border-secondary/50 dark:border-secondary/20">{entry.summaryContent}</p>
+                                                    <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-secondary-foreground"><FileText className="h-4 w-4" /> Learning Summary</h4>
+                                                    <div className="bg-secondary/30 dark:bg-secondary/10 p-2 rounded-md border border-secondary/50 dark:border-secondary/20">
+                                                      {/* Use the renderer for the new summary format */}
+                                                      <SimpleMarkdownRenderer content={entry.learningSummary} />
+                                                    </div>
                                                 </div>
                                             )}
                                             {entry.studyNotesContent && (
                                                 <div>
-                                                    <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-secondary-foreground"><Lightbulb className="h-4 w-4" /> Study Notes</h4>
+                                                    <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-secondary-foreground"><Lightbulb className="h-4 w-4" /> Study Notes</h4>
                                                     <div className="bg-secondary/30 dark:bg-secondary/10 p-2 rounded-md border border-secondary/50 dark:border-secondary/20">
                                                       <SimpleMarkdownRenderer content={entry.studyNotesContent} />
                                                     </div>
@@ -308,7 +352,7 @@ export default function LearningsPage() {
                                             )}
                                             {entry.codeSnippetContent && (
                                                 <div>
-                                                    <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-secondary-foreground">
+                                                    <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-secondary-foreground">
                                                         <Code className="h-4 w-4" /> Code Snippet
                                                         {entry.codeLanguage && <Badge variant="outline" size="sm" className="ml-auto text-xs">{entry.codeLanguage}</Badge>}
                                                     </h4>
@@ -318,6 +362,10 @@ export default function LearningsPage() {
                                                         </pre>
                                                     </ScrollArea>
                                                 </div>
+                                            )}
+                                             {/* Fallback if no content fields are present */}
+                                            {!entry.learningSummary && !entry.studyNotesContent && !entry.codeSnippetContent && (
+                                                <p className="text-sm text-muted-foreground italic">No content saved for this entry.</p>
                                             )}
                                         </CardContent>
                                     </Card>
@@ -347,5 +395,3 @@ export default function LearningsPage() {
     </main>
   );
 }
-
-    

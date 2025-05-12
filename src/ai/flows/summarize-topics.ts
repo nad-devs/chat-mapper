@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview Summarizes the main topics discussed in a conversation and assigns a category.
+ * @fileOverview Summarizes the key concepts grasped by the learner in a conversation and assigns a category.
  *
  * - summarizeTopics - A function that summarizes the topics and categorizes a conversation.
  * - SummarizeTopicsInput - The input type for the summarizeTopics function.
@@ -17,12 +17,12 @@ const SummarizeTopicsInputSchema = z.object({
 });
 export type SummarizeTopicsInput = z.infer<typeof SummarizeTopicsInputSchema>;
 
-// Updated output schema to include category
+// Updated output schema to include learningSummary in the specified format
 const SummarizeTopicsOutputSchema = z.object({
-  summary: z
+  learningSummary: z
     .string()
-    .describe('A concise paragraph summarizing the main themes and key takeaways of the conversation.'),
-  keyTopics: z.array(z.string()).describe('A list of the most important topics discussed.'),
+    .describe('A Markdown bullet-point list of every concept the learner ended up grasping. Each bullet starts with ✔, describes the concept concisely, and includes a short parenthetical note on the specific stumbling block resolved (e.g., "(struggled with mapping chars to indices)"). Include one-sentence plain-English definitions where helpful. No praise or teaching process explanations.'),
+  keyTopics: z.array(z.string()).describe('A list of the most important general topics discussed (remains for categorization/tagging).'),
   category: z.string().nullable().describe('The main category of the conversation (e.g., "Backend Development", "Data Structures & Algorithms", "Leetcode Problem", "Frontend Frameworks", "Web Design", "General Conversation", "Other Technical"). Null if category is unclear.')
 });
 export type SummarizeTopicsOutput = z.infer<typeof SummarizeTopicsOutputSchema>;
@@ -36,19 +36,30 @@ const summarizeTopicsPrompt = ai.definePrompt({
   model: 'googleai/gemini-1.5-flash-latest',
   input: {schema: SummarizeTopicsInputSchema},
   output: {schema: SummarizeTopicsOutputSchema},
-  prompt: `You are an expert AI assistant skilled in analyzing and summarizing conversations.
+  prompt: `You are ChatGPT, a senior learning-design specialist.
+Analyze the entire conversation below.
 
-  Your task is to carefully read the following ChatGPT conversation and provide a high-quality summary and categorization.
+Conversation:
+{{{conversation}}}
 
-  Conversation:
-  {{{conversation}}}
+Your job is to produce a **Learning Summary**.
 
-  Instructions:
-  1. Identify the main themes and overarching goals discussed in the conversation.
-  2. Extract the most important and distinct topics covered. List these as 'keyTopics'.
-  3. Write a concise paragraph ('summary') that synthesizes these themes and topics, capturing the essence and key takeaways of the discussion. Focus on clarity and brevity.
-  4. Determine the primary category of the conversation. Choose from the following options: "Backend Development", "Data Structures & Algorithms", "Leetcode Problem", "Frontend Frameworks", "Web Design", "General Conversation", "Other Technical". If the category is ambiguous or doesn't fit well, assign "General Conversation" or "Other Technical" as appropriate. If unsure, set the 'category' field to null.
-  5. Ensure the output matches the requested JSON format with 'summary', 'keyTopics', and 'category' fields.
+Instructions for **Learning Summary**:
+1.  Identify *every* concept or technique the learner **ended up grasping** by the end of the conversation. Ignore concepts they remained confused about.
+2.  Format the output as a Markdown bullet-point list.
+3.  For *each* grasped concept:
+    *   Start the bullet point with a checkmark emoji (✔).
+    *   Follow with a concise description of the concept/technique grasped.
+    *   Immediately after the description, add a very short parenthetical note identifying the specific stumbling block that was resolved during the discussion of *that specific concept*. Example: "(struggled with dictionary syntax)" or "(confused about base cases)". If no specific struggle for a grasped concept is evident, omit the parenthesis for that bullet.
+    *   Where helpful for clarity, include a brief, one-sentence plain-English definition of the technical term or concept *within* the bullet point description.
+4.  **Crucially:** Do *not* include any explanation of the teaching process, praise for the learner, or repetition of the problem name after its first mention (if applicable). Focus solely on the learned concepts and resolved struggles.
+5.  Return this bullet list as the value for the \`learningSummary\` field.
+
+Additionally:
+6.  Identify the most important general topics discussed (e.g., "Python Dictionaries", "Recursion", "Valid Anagram Problem") and return them as a list in the \`keyTopics\` field.
+7.  Determine the primary category of the conversation. Choose from: "Backend Development", "Data Structures & Algorithms", "Leetcode Problem", "Frontend Frameworks", "Web Design", "General Conversation", "Other Technical". If unsure or ambiguous, use "General Conversation" or "Other Technical". Return this in the \`category\` field (or null if truly unclassifiable).
+
+Ensure the entire output strictly matches the requested JSON schema with 'learningSummary', 'keyTopics', and 'category' fields.
 `,
 });
 
@@ -63,11 +74,11 @@ const summarizeTopicsFlow = ai.defineFlow(
     // Ensure output is not null before returning
     if (!output) {
         // Provide a default structure on failure, matching the schema
-        return { summary: "", keyTopics: [], category: null };
+        return { learningSummary: "", keyTopics: [], category: null };
     }
-    // Ensure category is returned, defaulting to null if missing
+    // Ensure all fields are returned, defaulting if necessary
     return {
-        summary: output.summary || "",
+        learningSummary: output.learningSummary || "",
         keyTopics: output.keyTopics || [],
         category: output.category !== undefined ? output.category : null
     };

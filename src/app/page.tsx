@@ -19,9 +19,9 @@ import Link from 'next/link'; // Import Link for navigation
 // Initial state for quiz generation action
 const initialQuizState: GenerateQuizResult = { quizTopics: null, error: null };
 
-// Define initial analysis state explicitly
+// Define initial analysis state explicitly - updated field name
 const initialAnalysisState: ProcessedConversationResult = {
-    topicsSummary: null,
+    learningSummary: null, // Changed from topicsSummary
     keyTopics: null,
     category: null,
     conceptsMap: null,
@@ -84,18 +84,19 @@ export default function Home() {
                 variant: "destructive",
                 duration: 9000
              });
-        } else if (processedResults.studyNotes && processedResults.studyNotes.trim().length > 0) {
-            console.log("[Page] Analysis completed successfully. Notes generated.");
+        // Check if either learningSummary or studyNotes were generated
+        } else if ((processedResults.learningSummary && processedResults.learningSummary.trim().length > 0) || (processedResults.studyNotes && processedResults.studyNotes.trim().length > 0)) {
+            console.log("[Page] Analysis completed successfully. Summary or Notes generated.");
             toast({
                 title: "Analysis Complete",
                 description: "Conversation analyzed. You can now review insights.",
                 duration: 5000
             });
         } else {
-             console.log("[Page] Analysis completed successfully, but no study notes were generated.");
+             console.log("[Page] Analysis completed successfully, but no summary or study notes were generated.");
              toast({
                 title: "Analysis Complete",
-                description: "Conversation analyzed, but no specific study notes were generated this time.",
+                description: "Conversation analyzed, but no specific summary or study notes were generated this time.",
                 duration: 5000
              });
         }
@@ -227,7 +228,8 @@ export default function Home() {
                  <TopicDisplay
                     results={analysisResults}
                  />
-                 {!analysisError && (analysisResults.topicsSummary || (analysisResults.keyTopics && analysisResults.keyTopics.length > 0)) && (
+                 {/* Conditionally render quiz button only if analysis was mostly successful and generated summary or topics */}
+                 {!analysisError && (analysisResults.learningSummary || (analysisResults.keyTopics && analysisResults.keyTopics.length > 0)) && (
                     <div className="text-center mt-6">
                         <Button
                             onClick={handleStartQuizGeneration}

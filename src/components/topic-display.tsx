@@ -17,18 +17,19 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea'; // Import Textarea
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X } from 'lucide-react'; // Import Edit, Save, X
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X, CheckSquare } from 'lucide-react'; // Import Edit, Save, X, CheckSquare
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
-// Simple Markdown-like renderer (No changes needed here)
+// Updated Markdown-like renderer to handle checkmark bullets and general styling
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
-    line = line.trimStart().trimEnd();
+    line = line.trim(); // Trim both ends
 
+    // Render inline code `` `code` ``
     const renderInlineCode = (text: string) => {
         const parts = text.split(/(`[^`]+`)/);
         return parts.map((part, partIndex) => {
@@ -39,6 +40,7 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         });
     };
 
+    // Render bold **text**
     const renderBold = (text: string) => {
         const parts = text.split(/(\*\*.*?\*\*)/g);
         return parts.map((part, partIndex) => {
@@ -50,18 +52,33 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     };
 
     if (line.startsWith('### ')) {
-      return <h3 key={index} className="text-xl font-semibold mt-4 mb-2">{renderBold(line.substring(4))}</h3>;
+      return <h3 key={index} className="text-lg font-semibold mt-4 mb-2">{renderBold(line.substring(4))}</h3>;
     }
-     if (line.startsWith('## ')) {
-      return <h2 key={index} className="text-2xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
+    if (line.startsWith('## ')) {
+      return <h2 key={index} className="text-xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
     }
+    // Handle checkmark bullets (✔)
+    if (line.startsWith('✔ ')) {
+        // Wrap content after checkmark, handling potential inline code/bold
+        const contentPart = renderBold(line.substring(2));
+        return <li key={index} className="ml-5 flex items-start gap-2"><CheckSquare className="h-4 w-4 text-green-500 mt-1 shrink-0" /><span>{contentPart}</span></li>;
+    }
+    // Handle regular bullets (* or -)
     if (line.startsWith('* ') || line.startsWith('- ')) {
-      return <li key={index} className="ml-4">{renderBold(line.substring(2))}</li>;
+      return <li key={index} className="ml-5">{renderBold(line.substring(2))}</li>;
     }
+    // Handle numbered lists (1.)
+    if (/^\d+\.\s/.test(line)) {
+         const match = line.match(/^(\d+\.\s)(.*)/);
+         if (match) {
+            return <li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>;
+         }
+    }
+    // Handle empty lines as breaks
     if (line === '') {
         return <br key={index} />;
     }
-
+    // Default paragraph rendering
     return (
       <p key={index} className="mb-2 last:mb-0">
         {renderBold(line)}
@@ -69,28 +86,50 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     );
   });
 
+   // Group list items correctly
    const groupedElements: React.ReactNode[] = [];
    let currentList: React.ReactNode[] = [];
+   let listType: 'ul' | 'ol' | null = null; // Track list type
 
    elements.forEach((el, index) => {
      const isListItem = React.isValidElement(el) && el.type === 'li';
+     const isCheckListItem = isListItem && el.props.children[0]?.type === CheckSquare; // Check if it's our custom checkmark li
 
      if (isListItem) {
+       const currentListType = isCheckListItem || el.props.value === undefined ? 'ul' : 'ol';
+       if (listType && listType !== currentListType) {
+         // End previous list if type changes
+         const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+         const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+         groupedElements.push(<ListComponent key={`list-${index}-prev`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
+         currentList = [];
+         listType = null;
+       }
+       if (!listType) {
+         listType = currentListType;
+       }
        currentList.push(el);
      } else {
-       if (currentList.length > 0) {
-         groupedElements.push(<ul key={`ul-${index}`} className="space-y-1 mb-2 list-disc pl-5">{currentList}</ul>);
+       if (currentList.length > 0 && listType) {
+         // End current list
+         const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+         const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+         groupedElements.push(<ListComponent key={`list-${index}`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
          currentList = [];
+         listType = null;
        }
-       groupedElements.push(el);
+       groupedElements.push(el); // Add non-list element
      }
    });
 
-   if (currentList.length > 0) {
-     groupedElements.push(<ul key="ul-last" className="space-y-1 mb-2 list-disc pl-5">{currentList}</ul>);
+   // Add any remaining list
+   if (currentList.length > 0 && listType) {
+     const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+      const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+     groupedElements.push(<ListComponent key="list-last" className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
    }
-
-  return <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">{groupedElements}</div>;
+  // Apply base prose styling
+   return <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">{groupedElements}</div>;
 };
 
 
@@ -98,12 +137,17 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const { toast } = useToast();
   const [saveState, saveFormAction, isSaving] = useActionState(saveEntryAction, null);
 
-  const { topicsSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
-  const defaultTopicName = "Untitled Conversation";
+  // Use the new learningSummary field
+  const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
+  // Derive topicName from various sources, prioritizing code concept or first key topic
+  const derivedTopicName = codeAnalysis?.learnedConcept || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : null);
+  const defaultTopicName = "Untitled Learning";
+  const topicNameToUse = derivedTopicName || defaultTopicName;
 
-  // State for editing Summary
+
+  // State for editing Learning Summary
   const [isEditingSummary, setIsEditingSummary] = React.useState(false);
-  const [editedSummary, setEditedSummary] = React.useState(topicsSummary || '');
+  const [editedSummary, setEditedSummary] = React.useState(learningSummary || '');
 
   // State for editing Study Notes
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
@@ -111,11 +155,11 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   // Update local state if the results prop changes (e.g., new analysis)
   React.useEffect(() => {
-    setEditedSummary(topicsSummary || '');
+    setEditedSummary(learningSummary || '');
     setEditedNotes(studyNotes || '');
     setIsEditingSummary(false); // Reset editing state on new analysis
     setIsEditingNotes(false);
-  }, [topicsSummary, studyNotes]);
+  }, [learningSummary, studyNotes]);
 
   React.useEffect(() => {
     if (saveState) {
@@ -129,8 +173,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
 
   const handleSaveAllInsights = () => {
-    // Use the ORIGINAL AI-generated data for saving, regardless of local edits
-    const topicNameToSave = results.topicsSummary || results.codeAnalysis?.learnedConcept || defaultTopicName;
+    // Use the potentially EDITED local state for saving
+    const topicNameToSave = topicNameToUse; // Use the derived name
     const categoryToSave = results.category;
 
     const formData = new FormData();
@@ -138,8 +182,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     if (categoryToSave) {
       formData.append('category', categoryToSave);
     }
-    if (results.topicsSummary && results.topicsSummary.trim().length > 0) {
-      formData.append('summaryContent', results.topicsSummary);
+    // Save the potentially edited summary and notes
+    if (editedSummary && editedSummary.trim().length > 0) {
+      formData.append('learningSummary', editedSummary); // Changed field name
     }
     if (results.codeAnalysis?.finalCodeSnippet && results.codeAnalysis.finalCodeSnippet.trim().length > 0) {
       formData.append('codeSnippetContent', results.codeAnalysis.finalCodeSnippet);
@@ -147,12 +192,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
         formData.append('codeLanguage', results.codeAnalysis.codeLanguage);
       }
     }
-    if (results.studyNotes && results.studyNotes.trim().length > 0) {
-      formData.append('studyNotesContent', results.studyNotes);
+    if (editedNotes && editedNotes.trim().length > 0) {
+      formData.append('studyNotesContent', editedNotes);
     }
 
     // Check if there's anything to save
-    if (!formData.has('summaryContent') && !formData.has('codeSnippetContent') && !formData.has('studyNotesContent')) {
+    if (!formData.has('learningSummary') && !formData.has('codeSnippetContent') && !formData.has('studyNotesContent')) {
         toast({ title: "Nothing to Save", description: "No content available to save from this analysis." });
         return;
     }
@@ -162,24 +207,19 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     });
   };
 
-  // Handlers for Summary Edit
+  // Handlers for Learning Summary Edit
   const handleEditSummary = () => {
-    setEditedSummary(topicsSummary || ''); // Reset to original on starting edit
+    setEditedSummary(learningSummary || ''); // Reset to original on starting edit
     setIsEditingSummary(true);
   };
 
   const handleSaveSummary = () => {
-    // NOTE: This only saves the edit locally for display in this component.
-    // It does NOT update the original `results` prop or what gets saved by "Save All".
-    // If you wanted to persist edits, you'd need to update the parent state or call a specific update action.
-    // For now, we'll just update the local display:
-    // setAnalysisResults(prev => ({...prev, topicsSummary: editedSummary})); // Example if updating parent state
+    // Local save only for display until "Save All Insights" is clicked
     setIsEditingSummary(false);
-    // We'll let the displayed content use editedSummary while not editing now.
   };
 
   const handleCancelSummary = () => {
-    setEditedSummary(topicsSummary || ''); // Revert to original
+    setEditedSummary(learningSummary || ''); // Revert to original
     setIsEditingSummary(false);
   };
 
@@ -190,8 +230,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   };
 
   const handleSaveNotes = () => {
+    // Local save only for display until "Save All Insights" is clicked
     setIsEditingNotes(false);
-    // Display will now use the editedNotes state
   };
 
   const handleCancelNotes = () => {
@@ -199,10 +239,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     setIsEditingNotes(false);
   };
 
+  // Check content based on edited state
   const hasOverviewContent = !!editedSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  const hasStudyNotesContent = true; // Study notes tab is always shown
+  const notesExist = editedNotes && editedNotes.trim().length > 0;
+  const hasStudyNotesContent = notesExist || isEditingNotes; // Show tab if notes exist OR if currently editing
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
@@ -211,18 +253,18 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
   ].filter(tab => tab.hasContent);
 
-  const notesExist = editedNotes && editedNotes.trim().length > 0;
-  // Check original results for savable content
-  const anythingToSave = (results.topicsSummary && results.topicsSummary.trim().length > 0) ||
+
+  // Check *potentially edited* content for savable state
+  const anythingToSave = (editedSummary && editedSummary.trim().length > 0) ||
                          (results.codeAnalysis?.finalCodeSnippet && results.codeAnalysis.finalCodeSnippet.trim().length > 0) ||
-                         (results.studyNotes && results.studyNotes.trim().length > 0);
+                         (editedNotes && editedNotes.trim().length > 0);
 
 
-  if (availableTabs.length === 0 && !notesExist) {
+  if (availableTabs.length === 0) {
     return (
       <Card className="w-full mt-6">
         <CardHeader>
-          <CardTitle>Conversation Analysis</CardTitle>
+          <CardTitle>Conversation Analysis Results</CardTitle>
            {category && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1">
                 <Folder className="h-3 w-3" /> {category}
@@ -230,7 +272,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
            )}
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">No significant topics, concepts, or code insights found, and no study notes were generated.</p>
+          <p className="text-muted-foreground">No significant topics, concepts, code insights, or study notes were generated from this conversation.</p>
         </CardContent>
       </Card>
     );
@@ -241,8 +283,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   return (
     <Card className="w-full mt-6">
       <CardHeader>
-        <CardTitle>Conversation Analysis</CardTitle>
-        <CardDescription>Explore the insights extracted from the conversation. You can edit the summary and notes locally.</CardDescription>
+        <CardTitle>Conversation Analysis: {topicNameToUse}</CardTitle>
+        <CardDescription>Explore the insights extracted from the conversation. You can edit the summary and notes locally before saving.</CardDescription>
          {category && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm">
                 <Folder className="h-3 w-3" /> {category}
@@ -264,25 +306,25 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
           {hasOverviewContent && (
             <TabsContent value="overview" className="space-y-4">
-                {/* Summary Section */}
+                {/* Learning Summary Section */}
                 <Card className="bg-secondary/30 dark:bg-secondary/10 relative border border-secondary/50 dark:border-secondary/20">
                     <CardHeader className="pb-2">
                         <div className="flex justify-between items-center">
-                            <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Summary</CardTitle>
+                            <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Learning Summary</CardTitle>
                             {!isEditingSummary ? (
                                 <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7">
                                     <Edit className="h-4 w-4" />
-                                    <span className="sr-only">Edit Summary</span>
+                                    <span className="sr-only">Edit Learning Summary</span>
                                 </Button>
                             ) : (
                                 <div className="flex gap-1">
                                     <Button variant="ghost" size="icon" onClick={handleSaveSummary} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
                                         <Save className="h-4 w-4" />
-                                        <span className="sr-only">Save Summary</span>
+                                        <span className="sr-only">Save Learning Summary Edit</span>
                                     </Button>
                                     <Button variant="ghost" size="icon" onClick={handleCancelSummary} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
                                         <X className="h-4 w-4" />
-                                        <span className="sr-only">Cancel Edit Summary</span>
+                                        <span className="sr-only">Cancel Edit Learning Summary</span>
                                     </Button>
                                 </div>
                             )}
@@ -293,13 +335,17 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                             <Textarea
                                 value={editedSummary}
                                 onChange={(e) => setEditedSummary(e.target.value)}
-                                rows={4}
-                                className="w-full text-sm bg-background dark:bg-background/80"
+                                rows={6} // Increased rows for bullet list
+                                className="w-full text-sm bg-background dark:bg-background/80 font-mono" // Use mono for better bullet alignment potentially
                             />
                         ) : (
-                            <p className="text-foreground dark:text-foreground/90 text-sm">
-                                {editedSummary || <span className="italic text-muted-foreground">No summary generated.</span>}
-                            </p>
+                            <div className="text-foreground dark:text-foreground/90 text-sm">
+                                {editedSummary && editedSummary.trim().length > 0 ? (
+                                    <SimpleMarkdownRenderer content={editedSummary} />
+                                 ) : (
+                                    <span className="italic text-muted-foreground">No learning summary generated.</span>
+                                )}
+                            </div>
                         )}
                     </CardContent>
                 </Card>
@@ -376,8 +422,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                        <CardTitle className="text-sm font-medium">Final Code Example</CardTitle>
                        {codeAnalysis.codeLanguage && <Badge variant="default" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
                      </div>
-                     {codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: {codeAnalysis.codeLanguage}</CardDescription>}
-                     {!codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: Not detected</CardDescription>}
+                     {/* Removed redundant language display from CardDescription */}
+                     {/* {codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: {codeAnalysis.codeLanguage}</CardDescription>} */}
+                     {/* {!codeAnalysis.codeLanguage && <CardDescription className="text-xs pt-1">Language: Not detected</CardDescription>} */}
                    </CardHeader>
                    <CardContent className="p-0">
                      <ScrollArea className="max-h-[400px] w-full">
@@ -412,7 +459,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                 Study Notes
                                 </CardTitle>
                                 {!isEditingNotes ? (
-                                    <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7">
+                                    <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7" disabled={!notesExist && !isEditingNotes}>
                                         <Edit className="h-4 w-4" />
                                         <span className="sr-only">Edit Study Notes</span>
                                     </Button>
@@ -420,7 +467,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                     <div className="flex gap-1">
                                         <Button variant="ghost" size="icon" onClick={handleSaveNotes} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
                                             <Save className="h-4 w-4" />
-                                            <span className="sr-only">Save Study Notes</span>
+                                            <span className="sr-only">Save Study Notes Edit</span>
                                         </Button>
                                         <Button variant="ghost" size="icon" onClick={handleCancelNotes} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
                                             <X className="h-4 w-4" />
@@ -437,11 +484,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                     onChange={(e) => setEditedNotes(e.target.value)}
                                     rows={10}
                                     className="w-full text-sm bg-background dark:bg-background/80"
+                                    placeholder="Enter study notes here..."
                                 />
                             ) : notesExist ? (
                                 <SimpleMarkdownRenderer content={editedNotes} />
                             ) : (
-                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
+                                <p className="text-muted-foreground text-sm italic p-4">No study notes were generated for this conversation.</p>
                             )}
                         </CardContent>
                     </Card>
