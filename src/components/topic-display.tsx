@@ -155,14 +155,15 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                   {codeAnalysis.learnedConcept && (
                      <div className="bg-accent/10 p-4 rounded-md">
                         <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-accent"/>Concept Learned / Problem Solved</h3>
-                        <p className="text-accent-foreground/80">{codeAnalysis.learnedConcept}</p>
+                        {/* Changed text color to foreground for better contrast */}
+                        <p className="text-foreground">{codeAnalysis.learnedConcept}</p>
                      </div>
                   )}
                   {/* Display Final Code Snippet */}
                   {codeAnalysis.finalCodeSnippet && (
                      <Card className="bg-muted/10 overflow-hidden">
                         <CardHeader className="p-3 pb-2 bg-muted/20 border-b">
-                            <div className="flex justify-between items-center">
+                            <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
                                 <CardTitle className="text-sm font-medium">
                                     Final Code Example
                                 </CardTitle>
