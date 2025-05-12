@@ -15,12 +15,13 @@ import { useToast } from "@/hooks/use-toast"
 interface ChatInputFormProps {
   onProcessingStart: () => void;
   onProcessingComplete: (results: ProcessedConversationResult | null) => void;
+  isProcessing: boolean; // Add prop to know if processing is happening
 }
 
 const initialState: ProcessedConversationResult = {
     topicsSummary: '',
     keyTopics: [],
-    category: null, // Initialize category
+    category: null,
     conceptsMap: null,
     codeAnalysis: null,
     studyNotes: null,
@@ -37,54 +38,35 @@ function SubmitButton() {
   );
 }
 
-export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatInputFormProps) {
+export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProcessing }: ChatInputFormProps) {
   const [state, formAction, isActionPending] = useActionState(processConversation, initialState);
   const { toast } = useToast();
   const formRef = React.useRef<HTMLFormElement>(null);
+  const isPending = useFormStatus().pending; // Get pending state for the button
+  const isDisabled = isProcessing || isPending; // Disable if parent says processing OR form is pending
 
   React.useEffect(() => {
-    // Only react when the action is done (not pending) and the state is not the initial one
     if (!isActionPending && state !== initialState) {
-        console.log('[Form Effect] Action state received:', state); // Log state received
+        console.log('[Form Effect] Action state received:', state);
 
-        if (state.error) {
-          console.error('[Form Effect] Action returned an error:', state.error); // Log error
+        if (state.error && !state.error.includes('failed to save')) { // Only show critical errors via toast here
+          console.error('[Form Effect] Action returned an error:', state.error);
           toast({
             title: "Error",
             description: state.error,
             variant: "destructive",
           });
-          onProcessingComplete(state); // Pass error state
-        } else {
-          // Check if *any* data was successfully processed
-          const hasData = state.topicsSummary ||
-                          (state.keyTopics && state.keyTopics.length > 0) ||
-                          state.category || // Check for category
-                          state.conceptsMap ||
-                          (state.codeAnalysis && (state.codeAnalysis.learnedConcept || state.codeAnalysis.finalCodeSnippet)) ||
-                          state.studyNotes;
-
-          if (hasData) {
-              console.log('[Form Effect] Action successful with data.'); // Log success with data
-          } else {
-              console.log('[Form Effect] Action successful, but no significant data found.'); // Log success no data
-              toast({ title: "Analysis Complete", description: "No specific topics, concepts, code insights, or study notes found." });
-          }
-          onProcessingComplete(state); // Pass the result state (even if empty)
-          // Optionally reset form after successful submission
-          // formRef.current?.reset();
         }
+        // Let the parent handle success/warning toasts based on the full result
+        onProcessingComplete(state);
     }
   }, [state, isActionPending, onProcessingComplete, toast]);
 
 
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-      // DO NOT prevent default. Let the form submit naturally via the `action` prop.
-      // event.preventDefault(); // Removed preventDefault
-      console.log('[Form Submit] Form submitting via action prop. Triggering onProcessingStart.'); // Log form submission
+      console.log('[Form Submit] Form submitting via action prop. Triggering onProcessingStart.');
       onProcessingStart();
-      // The `action` prop on the form element handles calling `formAction`.
-      // No need to call it manually here.
+      // No need to preventDefault or call formAction manually
   };
 
 
@@ -92,32 +74,37 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
     <Card className="w-full">
       <CardHeader>
         <CardTitle>Input Conversation</CardTitle>
-        <CardDescription>Paste your full ChatGPT conversation below.</CardDescription>
+        <CardDescription>Paste your full ChatGPT conversation below. Analysis results will be saved automatically.</CardDescription>
       </CardHeader>
-      {/* Use the `action` prop for the form */}
       <form
         ref={formRef}
-        action={formAction} // Pass the action function here
-        onSubmit={handleFormSubmit} // Call onProcessingStart here
+        action={formAction}
+        onSubmit={handleFormSubmit}
       >
-        <CardContent>
-          <div className="grid w-full gap-1.5">
-            <Label htmlFor="conversationText">Conversation Text</Label>
-            <Textarea
-              placeholder="Paste your conversation here..."
-              id="conversationText"
-              name="conversationText" // Ensure name matches formData key
-              rows={15}
-              required
-              aria-describedby="conversation-error"
-            />
-            {/* Display error from state if present and not the initial state error */}
-            {state?.error && <p id="conversation-error" className="text-sm font-medium text-destructive">{state.error}</p>}
-          </div>
-        </CardContent>
-        <CardFooter>
-          <SubmitButton />
-        </CardFooter>
+        <fieldset disabled={isDisabled} className="group"> {/* Disable fieldset */}
+            <CardContent>
+            <div className="grid w-full gap-1.5">
+                <Label htmlFor="conversationText">Conversation Text</Label>
+                <Textarea
+                placeholder="Paste your conversation here..."
+                id="conversationText"
+                name="conversationText"
+                rows={15}
+                required
+                aria-describedby="conversation-error"
+                className="group-disabled:opacity-50" // Style when disabled
+                />
+                {state?.error && <p id="conversation-error" className="text-sm font-medium text-destructive">{state.error}</p>}
+            </div>
+            </CardContent>
+            <CardFooter>
+                {/* Pass disabled state to SubmitButton */}
+                 <Button type="submit" disabled={isDisabled}>
+                    {isDisabled ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {isDisabled ? 'Processing...' : 'Analyze Conversation'}
+                </Button>
+            </CardFooter>
+        </fieldset>
       </form>
     </Card>
   );

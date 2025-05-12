@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -5,9 +6,9 @@ import { summarizeTopics, SummarizeTopicsOutput } from '@/ai/flows/summarize-top
 import { mapConcepts, MapConceptsInput, MapConceptsOutput } from '@/ai/flows/map-concepts';
 import { analyzeCodeConceptAndFinalExample, AnalyzeCodeOutput } from '@/ai/flows/analyze-code';
 import { generateStudyNotes, GenerateStudyNotesOutput } from '@/ai/flows/generate-study-notes';
-// Import the new quiz flow and its types
 import { generateQuizTopics, GenerateQuizTopicsOutput, QuizTopic } from '@/ai/flows/generate-quiz-topics';
-
+import { db } from '@/lib/firebase'; // Import Firestore instance
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
 
 const processConversationInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
@@ -15,10 +16,12 @@ const processConversationInputSchema = z.object({
 
 // Update the result type to include studyNotes and category
 export type ProcessedConversationResult = {
+  id?: string; // Add ID for Firestore documents
+  timestamp?: any; // For Firestore timestamp
   originalConversationText?: string; // Keep original text for quiz generation
   topicsSummary: string;
   keyTopics: string[];
-  category: string | null; // Added category field
+  category: string | null;
   conceptsMap: MapConceptsOutput | null;
   codeAnalysis: AnalyzeCodeOutput | null;
   studyNotes: string | null;
@@ -42,7 +45,7 @@ export async function processConversation(
     return {
         topicsSummary: '',
         keyTopics: [],
-        category: null, // Initialize category
+        category: null,
         conceptsMap: null,
         codeAnalysis: null,
         studyNotes: null,
@@ -52,6 +55,11 @@ export async function processConversation(
 
   const { conversationText } = validatedFields.data;
   console.log('[Action] Validation successful. Conversation text length:', conversationText.length);
+
+  let summaryData: SummarizeTopicsOutput | null = null;
+  let codeAnalysisData: AnalyzeCodeOutput | null = null;
+  let studyNotesData: GenerateStudyNotesOutput | null = null;
+  let conceptsMap: MapConceptsOutput | null = null;
 
   try {
     console.log('[Action] Starting AI flows...');
@@ -66,7 +74,6 @@ export async function processConversation(
      // --- Helper function to extract result or null ---
     const getResultOrNull = <T>(settledResult: PromiseSettledResult<T | null>, flowName: string): T | null => {
       if (settledResult.status === 'fulfilled') {
-          // Return the value even if it's null or partially empty, let caller decide validity
           console.log(`[Action] ${flowName} flow fulfilled.`);
           return settledResult.value;
       } else {
@@ -76,39 +83,34 @@ export async function processConversation(
     };
 
     // --- Process Results ---
-    const summaryData = getResultOrNull(summaryResult, 'Summarize Topics');
-    const codeAnalysisData = getResultOrNull(codeAnalysisResult, 'Analyze Code');
-    const studyNotesData = getResultOrNull(studyNotesResult, 'Generate Study Notes');
+    summaryData = getResultOrNull(summaryResult, 'Summarize Topics');
+    codeAnalysisData = getResultOrNull(codeAnalysisResult, 'Analyze Code');
+    studyNotesData = getResultOrNull(studyNotesResult, 'Generate Study Notes');
 
     // Check for critical failure (e.g., summary failed)
-    // Category is useful but not strictly critical for basic display
     if (!summaryData?.summary || !summaryData?.keyTopics) {
       console.error("[Action] Critical failure: Could not summarize topics.");
       return {
         topicsSummary: '',
         keyTopics: [],
-        category: summaryData?.category ?? null, // Still pass category if available
+        category: summaryData?.category ?? null,
         conceptsMap: null,
-        codeAnalysis: codeAnalysisData, // Return whatever was successful
+        codeAnalysis: codeAnalysisData,
         studyNotes: studyNotesData?.studyNotes ?? null,
         error: 'Could not summarize topics. Analysis incomplete.'
       };
     }
 
-    // Destructure summary data including the new category
     const { summary: topicsSummary, keyTopics, category } = summaryData;
     console.log('[Action] Topics summarized successfully. Category:', category);
 
-    // Use extracted data or null
     const codeAnalysis: AnalyzeCodeOutput | null = codeAnalysisData;
     const studyNotes: string | null = studyNotesData?.studyNotes ?? null;
     console.log('[Action] Code analysis and study notes processed (may be null/empty).');
 
-
-    // Step 3: Map Concepts (depends on summary) - Can still fail gracefully
+    // Step 3: Map Concepts (depends on summary)
     console.log('[Action] Starting Concept Mapping...');
-    let conceptsMap: MapConceptsOutput | null = null;
-    if (topicsSummary) { // Only attempt if summary exists
+    if (topicsSummary) {
         const mapInput: MapConceptsInput = {
         mainTopic: topicsSummary,
         conversationText: conversationText,
@@ -124,25 +126,50 @@ export async function processConversation(
         console.log('[Action] Skipping Concept Mapping due to missing summary.');
     }
 
-
-    console.log('[Action] processConversation finished successfully.');
-    return {
-      originalConversationText: conversationText, // Store original text
+    // --- Prepare data for saving ---
+    const analysisResultToSave: Omit<ProcessedConversationResult, 'id' | 'error' | 'timestamp'> = {
+      originalConversationText: conversationText, // Save original text
       topicsSummary,
       keyTopics,
-      category, // Include the category
-      conceptsMap,
+      category,
+      conceptsMap, // This might be large, consider if needed
       codeAnalysis,
       studyNotes,
-      error: null,
     };
+
+    // --- Save to Firestore ---
+    try {
+        console.log('[Action] Saving analysis to Firestore...');
+        const docRef = await addDoc(collection(db, "analyses"), {
+            ...analysisResultToSave,
+            timestamp: serverTimestamp() // Add server timestamp
+        });
+        console.log("[Action] Document written with ID: ", docRef.id);
+
+        // Return successful result including saved data (without timestamp initially)
+         return {
+            ...analysisResultToSave,
+            id: docRef.id, // Include the new document ID
+            error: null,
+        };
+
+    } catch (dbError) {
+        console.error("[Action] Error adding document to Firestore: ", dbError);
+         // Return the processed data but indicate DB save error
+         return {
+            ...analysisResultToSave,
+            error: 'AI processing succeeded, but failed to save results to database.',
+        };
+    }
+
+
   } catch (error) {
     console.error('[Action] Unexpected error processing conversation:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return {
         topicsSummary: '',
         keyTopics: [],
-        category: null, // Ensure initialized on error
+        category: null,
         conceptsMap: null,
         codeAnalysis: null,
         studyNotes: null,
@@ -152,7 +179,7 @@ export async function processConversation(
 }
 
 
-// --- New Action for Generating Quiz Topics ---
+// --- Existing Action for Generating Quiz Topics (No DB interaction needed here yet) ---
 
 const generateQuizInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
