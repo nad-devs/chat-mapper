@@ -384,26 +384,32 @@ export async function saveUpdatedNotesAction(
 
         const savedId = await saveLearningEntry(notesEntryData);
 
+        let result: SaveNotesResult;
+
         if (savedId === null) {
             // Error occurred during save
             const errorMsg = `Failed to save notes for topic "${topicName}" to the database. Check server logs.`;
             console.error(`[Action/SaveNotes] ${errorMsg}`);
-            return JSON.parse(JSON.stringify(defaultSaveErrorState(errorMsg)));
+            result = defaultSaveErrorState(errorMsg);
         } else if (savedId === "skipped_empty") {
              // Saved skipped because notes were empty
              console.log(`[Action/SaveNotes] Skipped saving empty notes for topic "${topicName}".`);
-             return JSON.parse(JSON.stringify({ success: true, error: null, info: "Notes were empty, nothing saved." }));
+             result = { success: true, error: null, info: "Notes were empty, nothing saved." };
         } else {
             // Save successful
             console.log(`[Action/SaveNotes] Successfully saved notes for topic "${topicName}" (ID: ${savedId})`);
-            return JSON.parse(JSON.stringify({ success: true, error: null }));
+            result = { success: true, error: null };
         }
+        // Force serialization before returning
+        return JSON.parse(JSON.stringify(result));
+
     } catch (error: any) {
         const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred during note saving.';
         console.error('[Action/SaveNotes] Unexpected top-level error:', errorMessage);
         if (error.stack) {
             console.error(error.stack);
         }
+        // Force serialization before returning
         return JSON.parse(JSON.stringify(defaultSaveErrorState(`Note saving failed unexpectedly: ${errorMessage}`)));
     }
 }
