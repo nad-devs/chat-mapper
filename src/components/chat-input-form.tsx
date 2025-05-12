@@ -22,7 +22,7 @@ const initialState: ProcessedConversationResult = {
     keyTopics: [],
     conceptsMap: null,
     codeAnalysis: null,
-    struggleNotes: null, // Initialize struggleNotes
+    studyNotes: null, // Updated field name
     error: null,
 };
 
@@ -37,57 +37,52 @@ function SubmitButton() {
 }
 
 export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatInputFormProps) {
-  const [state, formAction] = useActionState(processConversation, initialState);
+  const [state, formAction, isActionPending] = useActionState(processConversation, initialState);
   const { toast } = useToast();
   const formRef = React.useRef<HTMLFormElement>(null);
 
   React.useEffect(() => {
-    // Only proceed if state is not null (meaning the action has returned)
-    // And only if it's not the initial state (to avoid showing toast on load)
-    if (!state || state === initialState) return;
+    // Only react when the action is done (not pending) and the state is not the initial one
+    if (!isActionPending && state !== initialState) {
+        console.log('[Form Effect] Action state received:', state); // Log state received
 
-    console.log('[Form Effect] Action state received:', state); // Log state received
+        if (state.error) {
+          console.error('[Form Effect] Action returned an error:', state.error); // Log error
+          toast({
+            title: "Error",
+            description: state.error,
+            variant: "destructive",
+          });
+          onProcessingComplete(state); // Pass error state
+        } else {
+          // Check if *any* data was successfully processed
+          const hasData = state.topicsSummary ||
+                          (state.keyTopics && state.keyTopics.length > 0) ||
+                          state.conceptsMap ||
+                          (state.codeAnalysis && (state.codeAnalysis.learnedConcept || state.codeAnalysis.finalCodeSnippet)) ||
+                          state.studyNotes; // Updated check for any data including studyNotes
 
-    if (state.error) {
-      console.error('[Form Effect] Action returned an error:', state.error); // Log error
-      toast({
-        title: "Error",
-        description: state.error,
-        variant: "destructive",
-      });
-      onProcessingComplete(state); // Pass error state
-    } else {
-      // Check if *any* data was successfully processed
-      const hasData = state.topicsSummary ||
-                      (state.keyTopics && state.keyTopics.length > 0) ||
-                      state.conceptsMap ||
-                      (state.codeAnalysis && (state.codeAnalysis.learnedConcept || state.codeAnalysis.finalCodeSnippet)) ||
-                      state.struggleNotes; // Updated check for any data including struggleNotes
-
-      if (hasData) {
-          console.log('[Form Effect] Action successful with data.'); // Log success with data
-      } else {
-          console.log('[Form Effect] Action successful, but no significant data found.'); // Log success no data
-          toast({ title: "Analysis Complete", description: "No specific topics, concepts, code insights, or study notes found." });
-      }
-      onProcessingComplete(state); // Pass the result state (even if empty)
-      // Optionally reset form after successful submission
-      // formRef.current?.reset();
+          if (hasData) {
+              console.log('[Form Effect] Action successful with data.'); // Log success with data
+          } else {
+              console.log('[Form Effect] Action successful, but no significant data found.'); // Log success no data
+              toast({ title: "Analysis Complete", description: "No specific topics, concepts, code insights, or study notes found." });
+          }
+          onProcessingComplete(state); // Pass the result state (even if empty)
+          // Optionally reset form after successful submission
+          // formRef.current?.reset();
+        }
     }
-    // It's important that onProcessingComplete is called *after* the state update from the action,
-    // so the dependency array should include `state`.
-  }, [state, onProcessingComplete, toast]);
+  }, [state, isActionPending, onProcessingComplete, toast]);
 
 
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
       // DO NOT prevent default. Let the form submit naturally via the `action` prop.
-      // event.preventDefault();
-      console.log('[Form Submit] Form submitted. Triggering onProcessingStart.'); // Log form submission
+      // event.preventDefault(); // Removed preventDefault
+      console.log('[Form Submit] Form submitting via action prop. Triggering onProcessingStart.'); // Log form submission
       onProcessingStart();
-      // DO NOT call formAction manually here. The `action` prop handles it.
-      // const formData = new FormData(event.currentTarget);
-      // console.log('[Form Submit] Calling formAction with formData:', formData.get('conversationText')?.substring(0, 100) + '...'); // Log action call
-      // formAction(formData);
+      // The `action` prop on the form element handles calling `formAction`.
+      // No need to call it manually here.
   };
 
 
@@ -125,3 +120,4 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
     </Card>
   );
 }
+

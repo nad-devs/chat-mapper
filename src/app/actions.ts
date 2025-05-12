@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { summarizeTopics, SummarizeTopicsOutput } from '@/ai/flows/summarize-topics';
 import { mapConcepts, MapConceptsInput, MapConceptsOutput } from '@/ai/flows/map-concepts';
 import { analyzeCodeConceptAndFinalExample, AnalyzeCodeOutput } from '@/ai/flows/analyze-code';
-import { generateStruggleNotes, GenerateStruggleNotesOutput } from '@/ai/flows/generate-struggle-notes';
+import { generateStudyNotes, GenerateStudyNotesOutput } from '@/ai/flows/generate-study-notes'; // Updated import
 // Import the new quiz flow and its types
 import { generateQuizTopics, GenerateQuizTopicsOutput, QuizTopic } from '@/ai/flows/generate-quiz-topics';
 
@@ -13,14 +13,14 @@ const processConversationInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
 });
 
-// Update the result type to include struggle notes
+// Update the result type to include studyNotes
 export type ProcessedConversationResult = {
   originalConversationText?: string; // Keep original text for quiz generation
   topicsSummary: string;
   keyTopics: string[];
   conceptsMap: MapConceptsOutput | null;
   codeAnalysis: AnalyzeCodeOutput | null;
-  struggleNotes: string | null; // Add the new field for struggle notes
+  studyNotes: string | null; // Updated field name
   error?: string | null;
 };
 
@@ -43,7 +43,7 @@ export async function processConversation(
         keyTopics: [],
         conceptsMap: null,
         codeAnalysis: null,
-        struggleNotes: null, // Initialize struggleNotes
+        studyNotes: null, // Initialize studyNotes
         error: errorMsg,
     };
   }
@@ -53,13 +53,13 @@ export async function processConversation(
 
   try {
     console.log('[Action] Starting AI flows...');
-    // Run summary, code analysis, and struggle notes flow concurrently
-    const [summaryResult, codeAnalysisResult, struggleNotesResult] = await Promise.allSettled([
+    // Run summary, code analysis, and study notes flow concurrently
+    const [summaryResult, codeAnalysisResult, studyNotesResult] = await Promise.allSettled([
       summarizeTopics({ conversation: conversationText }),
       analyzeCodeConceptAndFinalExample({ conversationText: conversationText }),
-      generateStruggleNotes({ conversationText: conversationText }) // Call the new flow
+      generateStudyNotes({ conversationText: conversationText }) // Call the updated flow
     ]);
-    console.log('[Action] Summary, Code Analysis, and Struggle Notes results settled:', { summaryResult, codeAnalysisResult, struggleNotesResult });
+    console.log('[Action] Summary, Code Analysis, and Study Notes results settled:', { summaryResult, codeAnalysisResult, studyNotesResult });
 
      // --- Helper function to extract result or null ---
     const getResultOrNull = <T>(settledResult: PromiseSettledResult<T | null>, flowName: string): T | null => {
@@ -76,7 +76,7 @@ export async function processConversation(
     // --- Process Results ---
     const summaryData = getResultOrNull(summaryResult, 'Summarize Topics');
     const codeAnalysisData = getResultOrNull(codeAnalysisResult, 'Analyze Code');
-    const struggleNotesData = getResultOrNull(struggleNotesResult, 'Generate Struggle Notes');
+    const studyNotesData = getResultOrNull(studyNotesResult, 'Generate Study Notes'); // Updated flow name
 
     // Check for critical failure (e.g., summary failed)
     if (!summaryData?.summary || !summaryData?.keyTopics) {
@@ -86,7 +86,7 @@ export async function processConversation(
         keyTopics: [],
         conceptsMap: null,
         codeAnalysis: codeAnalysisData, // Return whatever was successful
-        struggleNotes: struggleNotesData?.notes ?? null, // Return notes if available
+        studyNotes: studyNotesData?.studyNotes ?? null, // Return notes if available (updated field)
         error: 'Could not summarize topics. Analysis incomplete.'
       };
     }
@@ -96,8 +96,8 @@ export async function processConversation(
 
     // Use extracted data or null
     const codeAnalysis: AnalyzeCodeOutput | null = codeAnalysisData;
-    const struggleNotes: string | null = struggleNotesData?.notes ?? null; // Extract notes string
-    console.log('[Action] Code analysis and struggle notes processed (may be null/empty).');
+    const studyNotes: string | null = studyNotesData?.studyNotes ?? null; // Extract notes string (updated field)
+    console.log('[Action] Code analysis and study notes processed (may be null/empty).');
 
 
     // Step 3: Map Concepts (depends on summary) - Can still fail gracefully
@@ -127,7 +127,7 @@ export async function processConversation(
       keyTopics,
       conceptsMap,
       codeAnalysis,
-      struggleNotes, // Include the struggle notes
+      studyNotes, // Include the study notes (updated field)
       error: null,
     };
   } catch (error) {
@@ -138,7 +138,7 @@ export async function processConversation(
         keyTopics: [],
         conceptsMap: null,
         codeAnalysis: null,
-        struggleNotes: null, // Ensure initialized on error
+        studyNotes: null, // Ensure initialized on error
         error: `AI processing failed: ${errorMessage}`,
     };
   }

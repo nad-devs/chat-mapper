@@ -10,7 +10,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb } from 'lucide-react'; // Added Lightbulb icon
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb } from 'lucide-react';
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
@@ -50,19 +50,19 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 
 export function TopicDisplay({ results }: TopicDisplayProps) {
-  const { topicsSummary, keyTopics, conceptsMap, codeAnalysis, struggleNotes } = results;
+  const { topicsSummary, keyTopics, conceptsMap, codeAnalysis, studyNotes } = results; // Updated field name
 
   // Determine if each section has content
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  const hasStruggleNotesContent = !!struggleNotes;
+  const hasStudyNotesContent = !!studyNotes; // Updated field name
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
     { value: 'concepts', label: 'Concept Map', icon: Shapes, hasContent: hasConceptsContent },
     { value: 'code', label: 'Code Insight', icon: Code, hasContent: hasCodeAnalysisContent },
-    { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStruggleNotesContent },
+    { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent }, // Label is fine
   ].filter(tab => tab.hasContent); // Filter out tabs with no content
 
   // If no tabs have content, show a message
@@ -171,7 +171,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                {codeAnalysis.learnedConcept && (
                  <div className="bg-accent/10 p-4 rounded-md">
                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-accent"/>Concept Learned / Problem Solved</h3>
-                   <p className="text-foreground whitespace-pre-wrap">{codeAnalysis.learnedConcept}</p>
+                   <p className="text-accent-foreground whitespace-pre-wrap">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
@@ -198,19 +198,24 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                    No specific code snippet identified for this concept in the conversation.
                  </div>
                )}
+                {!codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
+                 <div className="text-muted-foreground text-sm p-4 border border-dashed rounded-md">
+                   No code concepts or snippets were identified in this conversation.
+                 </div>
+               )}
              </TabsContent>
            )}
 
            {/* Study Notes Tab */}
-           {hasStruggleNotesContent && struggleNotes && (
+           {hasStudyNotesContent && studyNotes && ( // Updated field name
                 <TabsContent value="notes">
                     <div className="bg-primary/10 p-4 rounded-md border border-primary/20">
                         <h3 className="text-md font-semibold mb-3 flex items-center gap-2">
                            <Lightbulb className="h-4 w-4 text-primary-foreground" />
-                           Notes on Areas of Struggle/Clarification
+                           Study Notes {/* Updated title */}
                         </h3>
                         <div className="text-primary-foreground prose prose-sm max-w-none prose-strong:text-primary-foreground prose-li:marker:text-primary-foreground">
-                            <SimpleMarkdownRenderer content={struggleNotes} />
+                            <SimpleMarkdownRenderer content={studyNotes} /> {/* Updated field name */}
                         </div>
                     </div>
                 </TabsContent>

@@ -6,7 +6,6 @@ config();
 import '@/ai/flows/map-concepts';
 import '@/ai/flows/summarize-topics';
 import '@/ai/flows/analyze-code';
-import '@/ai/flows/generate-struggle-notes';
+import '@/ai/flows/generate-study-notes'; // Updated import
 import '@/ai/flows/generate-quiz-topics'; // Add the new flow
-
 
