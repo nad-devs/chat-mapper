@@ -28,7 +28,7 @@ interface TopicDisplayProps {
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
-    line = line.trim();
+    const trimmedLine = line.trim();
 
     // Render inline code `` `code` ``
     const renderInlineCode = (text: string) => {
@@ -54,26 +54,50 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     };
 
     // Handle H3 (###)
-    if (line.startsWith('### ')) {
-      return <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-primary">{renderBold(line.substring(4))}</h3>;
+    if (trimmedLine.startsWith('### ')) {
+      return <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-primary">{renderBold(trimmedLine.substring(4))}</h3>;
     }
     // Handle bullet points (* or -)
-    if (line.startsWith('* ') || line.startsWith('- ')) {
-      return <li key={index} className="ml-5 list-disc">{renderBold(line.substring(2))}</li>;
+    if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+      return <li key={index} className="ml-5 list-disc">{renderBold(trimmedLine.substring(2))}</li>;
     }
      // Handle numbered lists (1.)
-    if (/^\d+\.\s/.test(line)) {
-         const match = line.match(/^(\d+\.\s)(.*)/);
+    if (/^\d+\.\s/.test(trimmedLine)) {
+         const match = trimmedLine.match(/^(\d+\.\s)(.*)/);
          if (match) {
             return <li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>;
          }
     }
-    // Handle empty lines as paragraph breaks
-    if (line === '') {
+    // Handle code blocks ``` ... ``` (simple display) - render inner code block
+     if (trimmedLine.startsWith('```')) {
+         // Find the closing ```
+         let codeContent = '';
+         let language = '';
+         const langMatch = trimmedLine.match(/^```(\w*)/);
+         if (langMatch && langMatch[1]) {
+             language = langMatch[1];
+         }
+         let inCodeBlock = true;
+         for (let i = index + 1; i < lines.length; i++) {
+             if (lines[i].trim() === '```') {
+                 inCodeBlock = false;
+                 break;
+             }
+             codeContent += lines[i] + '\n';
+         }
+         // Render the code block as pre/code - note: this simple renderer doesn't skip lines already rendered
+         return (
+             <pre key={index} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border">
+                 <code className={`language-${language} font-mono`}>{codeContent.trimEnd()}</code>
+             </pre>
+         );
+     }
+    // Handle empty lines as breaks (but not within code blocks)
+    if (trimmedLine === '' && !lines.slice(0, index).some(l => l.trim().startsWith('```')) && !lines.slice(index + 1).some(l => l.trim().startsWith('```'))) {
         return <br key={index} />;
     }
     // Default paragraph rendering
-    return <p key={index} className="mb-2 last:mb-0">{renderBold(line)}</p>;
+    return <p key={index} className="mb-2 last:mb-0">{renderBold(trimmedLine)}</p>;
   });
 
   // Group list items
@@ -83,7 +107,7 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
    elements.forEach((el, index) => {
      const isListItem = React.isValidElement(el) && el.type === 'li';
-     const isHeading = React.isValidElement(el) && el.type === 'h3';
+     const isPre = React.isValidElement(el) && el.type === 'pre';
 
      if (isListItem) {
         const currentListType = el.props.value === undefined ? 'ul' : 'ol';
@@ -106,8 +130,17 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
          currentList = [];
          listType = null;
        }
-       // Don't group headings within lists
-       groupedElements.push(el); // Add non-list element
+       // Don't render paragraphs that are just empty strings (often result of split)
+       // unless it's an intentional break <br/> or code block <pre>
+       if (React.isValidElement(el) && (el.type === 'br' || el.type === 'pre' || (el.type === 'p' && el.props.children))) {
+           groupedElements.push(el);
+       } else if (!React.isValidElement(el)) {
+            // Handle raw text nodes if necessary, though unlikely with current logic
+            // groupedElements.push(el);
+       } else if (React.isValidElement(el) && el.type !== 'p') {
+            // Add other valid elements like h3
+             groupedElements.push(el);
+       }
      }
    });
 
@@ -119,11 +152,11 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
    }
 
   // Apply base text styling
-  return <div className="text-sm text-foreground dark:text-foreground/90">{groupedElements}</div>;
+  return <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none prose-headings:text-primary prose-p:text-foreground/90 prose-li:text-foreground/90 prose-strong:text-foreground prose-code:bg-muted prose-code:text-foreground prose-pre:bg-muted prose-pre:text-foreground prose-pre:border prose-pre:rounded-md">{groupedElements}</div>;
 };
 
 
-// Enhanced renderer for Study Notes (handles H3, lists, code) - Reusing SimpleMarkdownRenderer as it now handles H3
+// Use the improved renderer for Study Notes
 const StudyNotesRenderer = SimpleMarkdownRenderer;
 
 
@@ -133,11 +166,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
 
-  // Determine a simpler title: Use Category if available, otherwise first Key Topic, or fallback
-  const displayTitle = category || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : "Analysis Results");
+  // Determine a simpler title: Use Category if available, otherwise first Key Topic, or learned concept, or fallback
+  const displayTitle = category || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : codeAnalysis?.learnedConcept) || "Analysis Results";
 
-  // Determine a topic name suitable for saving (used for the document)
+  // Topic name for saving (prioritize learned concept, then title)
   const topicNameToSave = codeAnalysis?.learnedConcept || displayTitle || "Untitled Learning";
+
 
   // State for editing Study Notes
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
@@ -175,12 +209,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
     const formData = new FormData();
     formData.append('topicName', topicNameToSave); // Use the derived topic name
-    // Save category if it exists (for potential future filtering/display)
+    // Save category if it exists
     if (category) {
       formData.append('category', category);
     }
     if (summaryToSave && summaryToSave.trim().length > 0) {
-      formData.append('learningSummary', summaryToSave); // Changed field name
+      formData.append('learningSummary', summaryToSave);
     }
     if (codeSnippetToSave && codeSnippetToSave.trim().length > 0) {
       formData.append('codeSnippetContent', codeSnippetToSave);
@@ -228,7 +262,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   };
 
   // --- Content Checks ---
-  // Check content based on *original* results and edited states
   const originalSummaryExists = !!learningSummary && learningSummary.trim().length > 0;
   const originalNotesExist = !!studyNotes && studyNotes.trim().length > 0;
   const originalCodeExists = !!codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0;
@@ -243,7 +276,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     hasConceptsContent && { value: 'concepts', label: 'Concept Map', icon: Shapes },
     hasCodeAnalysisContent && { value: 'code', label: 'Code Insight', icon: Code },
     hasStudyNotesContent && { value: 'notes', label: 'Study Notes', icon: Lightbulb },
-  ].filter(Boolean) as { value: string, label: string, icon: React.ElementType }[]; // Filter out false values and assert type
+  ].filter(Boolean) as { value: string, label: string, icon: React.ElementType }[];
 
   // Check if anything needs saving (considering edits)
   const anythingToSave = (editedSummary && editedSummary.trim().length > 0) ||
@@ -255,7 +288,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     return (
       <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
         <CardHeader>
-          <CardTitle className="text-foreground">Analysis Results</CardTitle> {/* Display default title */}
+          <CardTitle className="text-foreground">Analysis Results</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">No significant topics, concepts, code insights, or study notes were generated from this conversation.</p>
@@ -264,20 +297,18 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     );
   }
 
-  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : 'overview'; // Default to first available tab
+  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : 'overview';
 
   return (
     <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
       <CardHeader>
-        {/* Simplified Title */}
         <CardTitle className="text-foreground text-xl">{displayTitle}</CardTitle>
-        {/* Display Category as a Badge if it exists AND differs from the main title */}
-        {category && category !== displayTitle && (
+        {/* Display Category as a Badge if it exists */}
+        {category && (
             <Badge variant="secondary" className="mt-2 w-fit flex items-center gap-1 text-xs">
                 <Folder className="h-3 w-3" /> {category}
             </Badge>
         )}
-        {/* Description still useful */}
         <CardDescription className="text-muted-foreground pt-1">
             Explore the insights extracted from the conversation. You can edit the summary and notes before saving.
         </CardDescription>
@@ -296,11 +327,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
           {/* Overview Tab */}
           {hasOverviewContent && (
             <TabsContent value="overview" className="space-y-4">
-                {/* Learning Summary Section - Now Editable */}
+                {/* Learning Summary Section - Editable */}
                 <Card className="bg-secondary/30 dark:bg-secondary/10 border border-border/50">
                     <CardHeader className="pb-2 flex flex-row items-center justify-between">
                         <CardTitle className="text-md flex items-center gap-2 text-secondary-foreground"><FileText className="h-4 w-4"/>Learning Summary</CardTitle>
-                        {/* Edit/Save/Cancel Buttons for Summary */}
                          {!isEditingSummary ? (
                             <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7" disabled={!originalSummaryExists && !isEditingSummary}>
                                 <Edit className="h-4 w-4" />
@@ -324,12 +354,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                              <Textarea
                                 value={editedSummary}
                                 onChange={(e) => setEditedSummary(e.target.value)}
-                                rows={5} // Adjust rows as needed
+                                rows={5}
                                 className="w-full text-sm bg-background dark:bg-background/80 border-input"
                                 placeholder="Enter learning summary..."
                             />
                         ) : (editedSummary && editedSummary.trim().length > 0) || originalSummaryExists ? (
-                            <div className="text-foreground dark:text-foreground/90 text-sm">
+                            <div className="text-foreground/90 text-sm">
                                 <SimpleMarkdownRenderer content={editedSummary} />
                             </div>
                          ) : (
@@ -399,44 +429,39 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
           {/* Code Insight Tab */}
            {hasCodeAnalysisContent && codeAnalysis && (
              <TabsContent value="code" className="space-y-4">
-               {codeAnalysis.learnedConcept && (
-                 <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
-                   {/* Apply text-foreground to ensure visibility for heading */}
-                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-foreground dark:text-foreground/90">
-                     <BrainCircuit className="h-4 w-4 text-primary"/>Concept Learned / Problem Solved
+                {/* Concept Learned Section */}
+                {codeAnalysis.learnedConcept && (
+                    <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
+                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-secondary-foreground">
+                        <BrainCircuit className="h-4 w-4 text-primary"/>Concept Learned / Problem Solved
                     </h3>
-                   {/* Apply text-foreground to ensure visibility for content */}
-                   <p className="whitespace-pre-wrap text-sm text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p>
-                 </div>
-               )}
-               {codeAnalysis.finalCodeSnippet && (
-                 <Card className="bg-muted/10 dark:bg-muted/20 overflow-hidden border border-border/50">
-                   <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/30 border-b border-border/50">
-                     <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
-                       <CardTitle className="text-sm font-medium text-foreground">Final Code Example</CardTitle>
-                       {codeAnalysis.codeLanguage && <Badge variant="secondary" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
-                     </div>
-                   </CardHeader>
-                   <CardContent className="p-0">
-                     <ScrollArea className="max-h-[400px] w-full">
-                       <pre className="p-4 text-xs bg-background/50 dark:bg-background/20 text-foreground dark:text-foreground/90 whitespace-pre-wrap break-words font-mono">
-                         <code>{codeAnalysis.finalCodeSnippet}</code>
-                       </pre>
-                     </ScrollArea>
-                   </CardContent>
-                 </Card>
-               )}
-               {/* Improved spacing and message for missing code */}
-               {codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
-                 <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md mt-4">
-                   No specific code snippet identified for this concept.
-                 </div>
-               )}
+                    <p className="whitespace-pre-wrap text-sm text-foreground/90">{codeAnalysis.learnedConcept}</p>
+                    </div>
+                )}
+                {/* Code Snippet Section */}
+                {codeAnalysis.finalCodeSnippet && (
+                    <Card className="bg-muted/10 dark:bg-muted/20 overflow-hidden border border-border/50">
+                    <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/30 border-b border-border/50">
+                        <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
+                        <CardTitle className="text-sm font-medium text-foreground">Final Code Example</CardTitle>
+                        {codeAnalysis.codeLanguage && <Badge variant="secondary" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <ScrollArea className="max-h-[400px] w-full">
+                        <pre className="p-4 text-xs bg-background/50 dark:bg-background/20 text-foreground/90 whitespace-pre-wrap break-words font-mono">
+                            <code>{codeAnalysis.finalCodeSnippet}</code>
+                        </pre>
+                        </ScrollArea>
+                    </CardContent>
+                    </Card>
+                )}
+                {/* Fallback messages with better spacing */}
                 {!codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
-                 <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md mt-4">
-                   No code concepts or snippets were identified.
-                 </div>
-               )}
+                    <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md mt-4">
+                    No code concepts or snippets were identified.
+                    </div>
+                )}
              </TabsContent>
            )}
 
@@ -448,7 +473,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                             <CardTitle className="text-md flex items-center gap-2 text-secondary-foreground">
                                 <Lightbulb className="h-4 w-4" /> Study Notes
                             </CardTitle>
-                            {/* Edit/Save/Cancel Buttons for Notes */}
                             {!isEditingNotes ? (
                                 <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7" disabled={!originalNotesExist && !isEditingNotes}>
                                     <Edit className="h-4 w-4" />
@@ -467,7 +491,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                 </div>
                             )}
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="p-4"> {/* Added padding to content area */}
                             {isEditingNotes ? (
                                 <Textarea
                                     value={editedNotes}
@@ -476,10 +500,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                     className="w-full text-sm bg-background dark:bg-background/80 border-input"
                                     placeholder="Enter study notes here..."
                                 />
-                             ) : (editedNotes && editedNotes.trim().length > 0) || originalNotesExist ? ( // Show edited notes even if original was empty
+                             ) : (editedNotes && editedNotes.trim().length > 0) || originalNotesExist ? (
                                 <StudyNotesRenderer content={editedNotes} />
                             ) : (
-                                <p className="text-muted-foreground text-sm italic p-4">No study notes were generated for this conversation.</p>
+                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
                             )}
                         </CardContent>
                     </Card>
@@ -491,11 +515,11 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
       <CardFooter className="border-t border-border pt-6">
         <Button
             onClick={handleSaveAllInsights}
-            disabled={isSaving || !anythingToSave} // Disable if nothing to save or currently saving
+            disabled={isSaving || !anythingToSave}
             aria-label="Save All Insights"
             className={cn(
                 "w-full md:w-auto",
-                 !anythingToSave && "cursor-not-allowed opacity-50" // Add disabled style visually
+                 !anythingToSave && "cursor-not-allowed opacity-50"
             )}
         >
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
