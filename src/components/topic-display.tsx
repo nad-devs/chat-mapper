@@ -12,15 +12,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Edit, Save, XCircle, Folder, Loader2 } from 'lucide-react'; // Import icons, added Folder, Loader2
+// import { Textarea } from '@/components/ui/textarea'; // Removed Textarea import
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Save, Folder, Loader2 } from 'lucide-react'; // Import icons, removed Edit, XCircle
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
-  onNotesUpdate: (updatedNotes: string) => void; // Callback to update notes LOCALLY in parent
+  // onNotesUpdate: (updatedNotes: string) => void; // Removed notes update callback
   onSaveNotes: () => void; // Callback to trigger saving notes via action
   isSavingNotes: boolean; // Flag indicating if save action is pending
-  hasPendingNoteChanges: boolean; // Flag indicating if notes have been edited locally
+  // hasPendingNoteChanges: boolean; // Removed flag for local edits
 }
 
 // Simple Markdown-like renderer (basic bold, list, H3, inline code support)
@@ -111,10 +111,10 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 export function TopicDisplay({
     results,
-    onNotesUpdate,
+    // onNotesUpdate, // Removed
     onSaveNotes, // Function to trigger save action in parent
     isSavingNotes, // Boolean indicating if save is in progress
-    hasPendingNoteChanges // Boolean indicating local edits exist
+    // hasPendingNoteChanges // Removed
 }: TopicDisplayProps) {
   // Use nullish coalescing for safer access
   const topicsSummary = results.topicsSummary ?? null;
@@ -124,53 +124,24 @@ export function TopicDisplay({
   const codeAnalysis = results.codeAnalysis ?? null;
   const studyNotes = results.studyNotes ?? null; // The original notes from analysis
 
-  // State for editing study notes - managed within this component
-  const [isEditingNotes, setIsEditingNotes] = React.useState(false);
-  const [editedNotes, setEditedNotes] = React.useState(studyNotes || ""); // Local copy for editing
+  // State for editing study notes - REMOVED
+  // const [isEditingNotes, setIsEditingNotes] = React.useState(false);
+  // const [editedNotes, setEditedNotes] = React.useState(studyNotes || "");
 
-  // Update local editedNotes if the underlying studyNotes prop changes (e.g., new analysis result)
-  // Only update if not currently editing to avoid overwriting user changes
-  React.useEffect(() => {
-     if (!isEditingNotes) {
-        setEditedNotes(studyNotes || "");
-     }
-    // Exit edit mode if new analysis results come in
-    setIsEditingNotes(false);
-    // No need to call onNotesUpdate here, as this effect is for syncing incoming props
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studyNotes]); // Dependency only on studyNotes prop
+  // Effect to update local state if notes prop changes - REMOVED
+  // React.useEffect(() => { ... });
 
-  // Handlers for editing notes
-  const handleEditNotesClick = () => {
-    setEditedNotes(studyNotes || ""); // Reset local state to original on edit start
-    setIsEditingNotes(true);
-    // Notify parent that no pending changes exist initially when starting edit
-    onNotesUpdate(studyNotes || "");
-  };
+  // Handlers for editing notes - REMOVED
+  // const handleEditNotesClick = () => { ... };
+  // const handleCancelEditClick = () => { ... };
+  // const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => { ... };
 
+  // Handler for saving notes - Simplified
   const handleSaveNotesClick = () => {
     // Call the callback provided by the parent to trigger the save action
-    // The parent (`page.tsx`) handles the actual action call
     console.log("[TopicDisplay] Save button clicked, calling onSaveNotes prop.");
     onSaveNotes();
-    // Exit edit mode after triggering save. Parent toast will confirm success/failure.
-    // Keep edit mode active or inactive based on current state, don't force exit?
-    // setIsEditingNotes(false); // Let's not exit edit mode automatically on save trigger
-  };
-
-  // Handler for Cancel - revert changes and exit edit mode
-  const handleCancelEditClick = () => {
-    setIsEditingNotes(false);
-    const originalNotes = studyNotes || "";
-    setEditedNotes(originalNotes); // Revert local changes
-    onNotesUpdate(originalNotes); // Notify parent to clear the 'dirty' state
-    console.log("[TopicDisplay] Cancel edit clicked, reverting notes.");
-  };
-
-  // Handler for changes in the textarea during edit mode
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setEditedNotes(e.target.value); // Update local state
-      onNotesUpdate(e.target.value); // Notify parent about the change immediately
+    // No need to exit edit mode
   };
 
 
@@ -178,7 +149,7 @@ export function TopicDisplay({
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  // Study notes tab should always be available, either showing content or allowing adding/editing.
+  // Study notes tab should always be available, either showing content or allowing saving.
   const hasStudyNotesContent = true; // Always show the notes tab
 
   const availableTabs = [
@@ -188,8 +159,11 @@ export function TopicDisplay({
     { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
   ].filter(tab => tab.hasContent); // Filter out tabs with no content initially
 
+  // Determine if notes exist for enabling the save button
+  const notesExist = studyNotes && studyNotes.trim().length > 0;
+
   // If no tabs have content initially (except notes), show a message
-  if (availableTabs.length <= 1 && !isEditingNotes && !(studyNotes && studyNotes.trim().length > 0)) {
+  if (availableTabs.length <= 1 && !notesExist) {
     return (
       <Card className="w-full mt-6">
         <CardHeader>
@@ -202,42 +176,14 @@ export function TopicDisplay({
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">No significant topics, concepts, or code insights found in the provided conversation.</p>
-             {/* Allow starting edit even if notes are null/empty */}
-             <div className="mt-4 flex justify-between items-center bg-secondary/10 p-4 rounded-md border border-secondary/20">
-                <h3 className="text-md font-semibold flex items-center gap-2">
+             {/* Show info about notes if none generated */}
+             <div className="mt-4 bg-secondary/10 p-4 rounded-md border border-secondary/20">
+                <h3 className="text-md font-semibold flex items-center gap-2 mb-2">
                     <Lightbulb className="h-4 w-4 text-secondary-foreground" />
                     Study Notes
                 </h3>
-                <Button variant="ghost" size="sm" onClick={handleEditNotesClick}>
-                    <Edit className="h-4 w-4 mr-1" /> Add/Edit Notes
-                </Button>
+                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
             </div>
-             {isEditingNotes && (
-                <div className="mt-4 space-y-3 bg-secondary/10 p-4 rounded-md border border-secondary/20">
-                     <Textarea
-                        value={editedNotes}
-                        onChange={handleTextareaChange} // Update local state and notify parent
-                        rows={15}
-                        className="text-sm"
-                        placeholder="Add your study notes..."
-                        disabled={isSavingNotes} // Disable textarea while saving
-                    />
-                    <div className="flex justify-end gap-2">
-                         <Button variant="outline" size="sm" onClick={handleCancelEditClick} disabled={isSavingNotes}>
-                            <XCircle className="h-4 w-4 mr-1" /> Cancel
-                        </Button>
-                        <Button
-                            variant="default"
-                            size="sm"
-                            onClick={handleSaveNotesClick} // Trigger save via parent
-                            disabled={isSavingNotes || !hasPendingNoteChanges} // Disable if saving or no changes
-                        >
-                            {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-                            {isSavingNotes ? 'Saving...' : 'Save Notes'}
-                        </Button>
-                    </div>
-                </div>
-            )}
         </CardContent>
       </Card>
     );
@@ -250,7 +196,7 @@ export function TopicDisplay({
     <Card className="w-full mt-6">
       <CardHeader>
         <CardTitle>Conversation Analysis</CardTitle>
-        <CardDescription>Explore the insights extracted from the conversation. Study notes can be edited and saved.</CardDescription>
+        <CardDescription>Explore the insights extracted from the conversation. Generated notes can be saved.</CardDescription>
          {/* Display Category Badge if available */}
          {category && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm">
@@ -344,7 +290,6 @@ export function TopicDisplay({
                {codeAnalysis.learnedConcept && (
                  <div className="bg-primary/10 p-4 rounded-md border border-primary/20">
                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-primary"/>Concept Learned / Problem Solved</h3>
-                   {/* Use standard foreground color for readability */}
                    <p className="whitespace-pre-wrap text-foreground">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
@@ -389,67 +334,27 @@ export function TopicDisplay({
                             <Lightbulb className="h-4 w-4 text-secondary-foreground" />
                             Study Notes
                             </h3>
-                            {/* Control buttons */}
-                            <div className="flex gap-2">
-                                {!isEditingNotes && (
-                                    <>
-                                    {/* Persistent Save Button */}
-                                    <Button
-                                        variant="default"
-                                        size="sm"
-                                        onClick={handleSaveNotesClick} // Trigger save via parent
-                                        disabled={isSavingNotes || (!hasPendingNoteChanges && !(editedNotes && editedNotes.trim().length > 0))} // Disable if saving OR no changes AND notes are empty
-                                        title={hasPendingNoteChanges ? "Save pending changes" : "Save current notes"}
-                                    >
-                                        {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-                                        {isSavingNotes ? 'Saving...' : 'Save Notes'}
-                                    </Button>
-                                    <Button variant="ghost" size="sm" onClick={handleEditNotesClick}>
-                                        <Edit className="h-4 w-4 mr-1" /> Edit
-                                    </Button>
-                                    </>
-                                )}
-                                {isEditingNotes && (
-                                    <>
-                                        <Button variant="outline" size="sm" onClick={handleCancelEditClick} disabled={isSavingNotes}>
-                                            <XCircle className="h-4 w-4 mr-1" /> Cancel
-                                        </Button>
-                                        <Button
-                                            variant="default"
-                                            size="sm"
-                                            onClick={handleSaveNotesClick} // Trigger save via parent
-                                            disabled={isSavingNotes || !hasPendingNoteChanges} // Disable if saving or no changes
-                                        >
-                                            {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
-                                            {isSavingNotes ? 'Saving...' : 'Save Notes'}
-                                        </Button>
-                                    </>
-                                )}
-                            </div>
+                            {/* Save Button */}
+                            <Button
+                                variant="default"
+                                size="sm"
+                                onClick={handleSaveNotesClick} // Trigger save via parent
+                                disabled={isSavingNotes || !notesExist} // Disable if saving or no notes exist
+                                title={notesExist ? "Save generated notes" : "No notes generated to save"}
+                            >
+                                {isSavingNotes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+                                {isSavingNotes ? 'Saving...' : 'Save Notes'}
+                            </Button>
                         </div>
 
-                         {isEditingNotes ? (
-                            <div className="space-y-3">
-                                <Textarea
-                                    value={editedNotes}
-                                    onChange={handleTextareaChange} // Update local state and notify parent
-                                    rows={15}
-                                    className="text-sm"
-                                    placeholder="Edit your study notes..."
-                                    disabled={isSavingNotes} // Disable textarea while saving
-                                />
-                                {/* Buttons are moved above */}
+                         {/* Display rendered notes or a message if empty */}
+                         {notesExist ? ( // Check original studyNotes
+                            <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">
+                                <SimpleMarkdownRenderer content={studyNotes} />
                             </div>
                         ) : (
-                             // Display rendered notes or a message if empty
-                             editedNotes && editedNotes.trim().length > 0 ? ( // Check editedNotes which reflects original or saved state
-                                <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">
-                                    <SimpleMarkdownRenderer content={editedNotes} />
-                                </div>
-                            ) : (
-                                // Show message if no notes exist and not editing
-                                <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation. Click 'Edit' to add some.</p>
-                            )
+                            // Show message if no notes exist
+                            <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
                         )}
                     </div>
                 </TabsContent>
@@ -460,3 +365,5 @@ export function TopicDisplay({
     </Card>
   );
 }
+
+    

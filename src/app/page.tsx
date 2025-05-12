@@ -48,9 +48,8 @@ export default function Home() {
   const [reviewTopics, setReviewTopics] = React.useState<QuizTopic[]>([]);
   const [showQuizSummary, setShowQuizSummary] = React.useState(false);
 
-  // State for saving updated notes
+  // State for saving generated notes (no editing involved)
   const [saveNotesState, saveNotesFormAction, isSaveNotesPending] = useActionState(saveUpdatedNotesAction, initialSaveNotesState);
-  const [notesToSave, setNotesToSave] = React.useState<{ topicName: string, notes: string } | null>(null); // Track notes needing save
 
   const { toast } = useToast();
 
@@ -70,7 +69,8 @@ export default function Home() {
     setRememberedTopics([]);
     setReviewTopics([]);
     setShowQuizSummary(false);
-    setNotesToSave(null); // Reset notes save state
+    // Reset save notes state if needed (actionState hook handles this mostly)
+    // No need for notesToSave state anymore
   }, []);
 
   const handleAnalysisComplete = React.useCallback((processedResults: ProcessedConversationResult | null) => {
@@ -87,17 +87,24 @@ export default function Home() {
         // Show toast message based on result error field
         if (processedResults.error) {
             console.error(`[Page] Analysis completed with error: ${processedResults.error}`);
-            // For any processing errors (validation, AI failure), the error will be displayed
-            // in the dedicated error div below the form. No toast needed here for these.
+            // Error is displayed in the dedicated error div below the form.
             console.log("[Page] Analysis completed with processing error, will be displayed in error div:", processedResults.error);
-            // Don't clear results here, let the error message display alongside potentially partial results
-        } else {
-            // Success case (no error reported in the result object)
-            console.log("[Page] Analysis completed successfully (no processing error field).");
+        } else if (processedResults.studyNotes && processedResults.studyNotes.trim().length > 0) {
+             // Success and notes generated
+            console.log("[Page] Analysis completed successfully. Notes generated.");
             toast({
                 title: "Analysis Complete",
-                description: "Conversation analyzed successfully. You can now save the study notes."
+                description: "Conversation analyzed. You can now save the study notes.",
+                duration: 5000
             });
+        } else {
+             // Success but no notes generated
+             console.log("[Page] Analysis completed successfully, but no study notes were generated.");
+             toast({
+                title: "Analysis Complete",
+                description: "Conversation analyzed, but no specific study notes were generated this time.",
+                duration: 5000
+             });
         }
     } else {
         // Handle case where the action itself returned null (e.g., serialization error)
@@ -172,30 +179,11 @@ export default function Home() {
     setShowQuizSummary(true); // Show the summary card
   }, []);
 
-  // --- Handler for Updating Study Notes LOCALLY ---
-  // This is called by TopicDisplay when the textarea changes in edit mode
-  const handleLocalNotesUpdate = React.useCallback((updatedNotes: string) => {
-    setAnalysisResults(prevResults => {
-      if (!prevResults) return null;
-      // Determine topic name for potential saving
-      const topicName = prevResults.category || (prevResults.topicsSummary && prevResults.topicsSummary.trim().length > 0 ? prevResults.topicsSummary.substring(0, 50) : null) || "Untitled Analysis";
-      // Store the potentially changed notes and topic name, marking them as 'dirty' for saving
-      setNotesToSave({ topicName: topicName, notes: updatedNotes });
-      console.log(`[Page] Locally updating study notes content. Marked for saving.`);
-      // We only update the 'notesToSave' state here. The main 'analysisResults.studyNotes'
-      // should ideally remain the original generated value until a successful save,
-      // or we can update it visually here but rely on 'notesToSave' for the actual save action.
-      // Let's keep analysisResults.studyNotes showing the *original* until saved.
-      // The TopicDisplay component will manage showing the edited value from its internal state.
-      return prevResults; // Return previous results, TopicDisplay handles showing the edited notes
-    });
-  }, []);
-
-  // --- Handler for Triggering Save Updated Notes Action ---
+  // --- Handler for Triggering Save Generated Notes Action ---
   // This is called by TopicDisplay when the Save button is clicked
   const handleSaveNotes = () => {
-      if (!notesToSave) {
-          toast({ title: "Info", description: "No changes detected in notes to save.", variant: "default"});
+      if (!analysisResults || !analysisResults.studyNotes || analysisResults.studyNotes.trim() === '') {
+          toast({ title: "Info", description: "No study notes available to save.", variant: "default"});
           return;
       }
        if (isSaveNotesPending) {
@@ -203,10 +191,15 @@ export default function Home() {
           return;
       }
 
-      console.log(`[Page] Triggering save action for updated notes for topic: ${notesToSave.topicName}`);
+      // Determine topic name for saving
+      const topicName = analysisResults.category
+                      || (analysisResults.topicsSummary && analysisResults.topicsSummary.trim().length > 0 ? analysisResults.topicsSummary.substring(0, 50) : null)
+                      || "Untitled Analysis";
+
+      console.log(`[Page] Triggering save action for generated notes for topic: ${topicName}`);
       const formData = new FormData();
-      formData.append('topicName', notesToSave.topicName);
-      formData.append('studyNotes', notesToSave.notes); // Use the potentially edited notes
+      formData.append('topicName', topicName);
+      formData.append('studyNotes', analysisResults.studyNotes); // Use the original generated notes
 
       startTransition(() => {
           saveNotesFormAction(formData); // Call the action bound to saveUpdatedNotesAction
@@ -220,18 +213,13 @@ export default function Home() {
           console.log('[Page Effect] Save Notes Action state received:', saveNotesState);
           if (saveNotesState.success) {
               toast({ title: "Success", description: "Study notes saved successfully to database." });
-              setNotesToSave(null); // Clear the 'dirty' flag after successful save
-
-              // Optionally update the main analysisResults with the saved notes
-              setAnalysisResults(prev => prev ? { ...prev, studyNotes: notesToSave?.notes ?? prev.studyNotes } : null);
-
+              // No need to update local state as we are not editing
           } else {
               toast({ title: "Save Error", description: saveNotesState.error || "Failed to save notes to database.", variant: "destructive" });
-              // Keep notesToSave set, so user can retry saving without losing edits
           }
       }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveNotesState, isSaveNotesPending, toast]); // Add notesToSave?.notes to deps? Maybe not needed if we rely on state change
+  }, [saveNotesState, isSaveNotesPending, toast]);
 
 
   // --- Handler for going back from Quiz Summary ---
@@ -287,10 +275,8 @@ export default function Home() {
              <>
                  <TopicDisplay
                     results={analysisResults}
-                    onNotesUpdate={handleLocalNotesUpdate} // Pass handler for local edits
                     onSaveNotes={handleSaveNotes} // Pass handler to trigger save action
                     isSavingNotes={isSaveNotesPending} // Pass saving state
-                    hasPendingNoteChanges={!!notesToSave} // Indicate if notes changed locally
                  />
                  {/* Conditionally render quiz button only if analysis was successful (at least summary/topics exist) */}
                  {(analysisResults.topicsSummary || (analysisResults.keyTopics && analysisResults.keyTopics.length > 0)) && (
@@ -435,6 +421,5 @@ function QuizSummary({ remembered, review, onRestart }: QuizSummaryProps) {
         </Card>
     );
 }
-
 
     
