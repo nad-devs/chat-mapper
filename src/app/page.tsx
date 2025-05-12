@@ -5,22 +5,21 @@ import * as React from 'react';
 import { useActionState, startTransition } from 'react';
 import { ChatInputForm } from '@/components/chat-input-form';
 import { TopicDisplay } from '@/components/topic-display';
-import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions';
+import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions'; // Removed LearningEntry import
 import { generateQuizTopicsAction } from '@/app/actions';
 import { QuizDisplay } from '@/components/quiz-display';
 import type { QuizTopic } from '@/ai/flows/generate-quiz-topics';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Loader2, Brain, ArrowLeft } from 'lucide-react'; // Removed History icon
+import { Loader2, Brain, ArrowLeft } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { CheckCircle, AlertCircle } from 'lucide-react';
-// Removed Link import as it's no longer needed for history
 
 // Initial state for quiz generation action
 const initialQuizState: GenerateQuizResult = { quizTopics: null, error: null };
 
-// Define initial analysis state explicitly (without id/timestamp)
+// Define initial analysis state explicitly
 const initialAnalysisState: ProcessedConversationResult = {
     topicsSummary: '',
     keyTopics: [],
@@ -68,13 +67,26 @@ export default function Home() {
     console.log('[Page] Analysis Processing complete. Results:', processedResults);
     setAnalysisResults(processedResults);
     setIsLoadingAnalysis(false);
-    // Show toast message based on result
-    // Removed check for DB save error as saving is removed
+
+    // Show toast message based on result, including potential save errors
     if (processedResults?.error) {
-       toast({ title: "Error", description: processedResults.error, variant: "destructive" });
+       toast({
+           title: "Analysis Complete with Issues",
+           description: processedResults.error, // Display AI or DB error
+           variant: "destructive" // Use destructive variant for errors
+        });
     } else if (processedResults) {
-       // Changed toast message as saving is removed
-       toast({ title: "Analysis Complete", description: "Conversation analyzed successfully." });
+       toast({
+           title: "Analysis Complete",
+           description: "Conversation analyzed and results saved successfully."
+        });
+    } else {
+        // Handle case where processing somehow completed but results are null (should ideally not happen)
+        toast({
+           title: "Analysis Ended",
+           description: "Processing finished, but no results were returned.",
+           variant: "destructive"
+        });
     }
   }, [toast]);
 
@@ -92,6 +104,7 @@ export default function Home() {
 
     const formData = new FormData();
     formData.append('conversationText', analysisResults.originalConversationText);
+    // Start transition for quiz action
     startTransition(() => {
         generateQuizAction(formData);
     });
@@ -137,13 +150,14 @@ export default function Home() {
     setAnalysisResults(prevResults => {
       if (!prevResults) return null;
       // Note: This only updates the local state for the current session.
-      // Changes are not persisted without a database.
+      // To persist, would need to call a separate save action here.
+      // For now, just show a toast indicating local update.
       return {
         ...prevResults,
         studyNotes: updatedNotes,
       };
     });
-     toast({ title: "Notes Updated", description: "Your study notes have been updated locally for this session." });
+     toast({ title: "Notes Updated", description: "Your study notes have been updated locally for this session. Re-analyze to save changes." });
   }, [toast]);
 
   const handleRestartQuizFlow = () => {
@@ -153,20 +167,9 @@ export default function Home() {
 
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-gradient-to-br from-background to-secondary/10">
+    <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-gradient-to-br from-background to-secondary/10 dark:from-zinc-900 dark:to-zinc-800/50">
       <div className="w-full max-w-3xl space-y-8">
         <header className="text-center relative">
-             {/* Removed History Button */}
-             {/*
-             <div className="absolute top-0 right-0">
-                <Button variant="outline" size="sm" asChild>
-                    <Link href="/history">
-                        <History className="mr-2 h-4 w-4" /> View History
-                    </Link>
-                </Button>
-            </div>
-            */}
-
              <svg width="60" height="60" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="inline-block mb-2 text-accent">
                 <path d="M17.9998 19C17.8898 19.91 17.4898 20.74 16.8998 21.33C15.7398 22.49 13.9498 22.79 12.4098 22.11C12.1498 22 11.8598 22 11.5898 22.11C10.0498 22.79 8.25979 22.49 7.09979 21.33C6.50979 20.74 6.10979 19.91 5.99979 19H17.9998Z" stroke="currentColor" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M18 19H6C3.79 19 2 17.21 2 15V10C2 7.79 3.79 6 6 6H18C20.21 6 22 7.79 22 10V15C22 17.21 20.21 19 18 19Z" stroke="currentColor" strokeWidth="1.5" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round"/>
@@ -208,7 +211,12 @@ export default function Home() {
                  </div>
             </>
         )}
-         {/* Removed specific handling for DB save error as it's no longer possible */}
+         {/* Display analysis error (AI or DB save error - hide if loading, quizzing, or showing summary) */}
+         {!isLoadingAnalysis && analysisResults?.error && !isQuizzing && !showQuizSummary && (
+            <div className="text-center text-red-500 dark:text-red-400 mt-6 p-4 border border-red-500/50 dark:border-red-400/50 bg-red-500/10 dark:bg-red-900/20 rounded-md">
+              Analysis Error: {analysisResults.error}
+            </div>
+        )}
 
 
         {/* Display Quiz Interface */}
@@ -228,19 +236,12 @@ export default function Home() {
             />
         )}
 
-        {/* Initial State / Error Message (hide if loading, quizzing, or showing summary) */}
+        {/* Initial State / Placeholder Message (hide if loading, results available, quizzing, or showing summary) */}
         {!isLoadingAnalysis && !analysisResults && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-muted-foreground mt-6">
-              Enter a conversation above and click Analyze to see the results.
+              Enter a conversation above and click Analyze to see the results and save them.
             </div>
         )}
-         {/* Display critical analysis error (hide if loading, quizzing, or showing summary) */}
-         {!isLoadingAnalysis && analysisResults?.error && !isQuizzing && !showQuizSummary && (
-            <div className="text-center text-red-500 mt-6 p-4 border border-red-500/50 bg-red-500/10 rounded-md">
-              Analysis Error: {analysisResults.error}
-            </div>
-        )}
-
 
       </div>
     </main>
@@ -304,7 +305,7 @@ function QuizSummary({ remembered, review, onRestart }: QuizSummaryProps) {
             </CardHeader>
             <CardContent className="space-y-6">
                 <div>
-                    <h3 className="text-lg font-semibold mb-3 flex items-center text-green-600">
+                    <h3 className="text-lg font-semibold mb-3 flex items-center text-green-600 dark:text-green-400">
                         <CheckCircle className="mr-2 h-5 w-5" /> Remembered Topics ({remembered.length})
                     </h3>
                     {remembered.length > 0 ? (
@@ -320,7 +321,7 @@ function QuizSummary({ remembered, review, onRestart }: QuizSummaryProps) {
                     )}
                 </div>
                 <div>
-                    <h3 className="text-lg font-semibold mb-3 flex items-center text-yellow-600">
+                    <h3 className="text-lg font-semibold mb-3 flex items-center text-yellow-600 dark:text-yellow-400">
                         <AlertCircle className="mr-2 h-5 w-5" /> Needs Review ({review.length})
                     </h3>
                     {review.length > 0 ? (
@@ -342,4 +343,3 @@ function QuizSummary({ remembered, review, onRestart }: QuizSummaryProps) {
         </Card>
     );
 }
-

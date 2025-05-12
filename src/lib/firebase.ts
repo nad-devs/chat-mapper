@@ -1,6 +1,6 @@
 
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-// Removed Firestore import: import { getFirestore, Firestore } from 'firebase/firestore';
+import { getFirestore, Firestore } from 'firebase/firestore'; // Re-add Firestore import
 // Add other Firebase services as needed (e.g., getAuth, getStorage)
 
 const firebaseConfig = {
@@ -21,8 +21,8 @@ if (!getApps().length) {
   app = getApp();
 }
 
-// Removed Firestore instance: const db: Firestore = getFirestore(app);
+// Initialize Firestore and export it
+const db: Firestore = getFirestore(app);
 
-// Only export the app instance now
-export { app };
-
+// Export the app and db instance
+export { app, db };
