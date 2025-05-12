@@ -41,28 +41,47 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
   const formRef = React.useRef<HTMLFormElement>(null);
 
   React.useEffect(() => {
-    if (state?.error) {
+    // Only proceed if state is not null (meaning the action has returned)
+    if (!state) return;
+
+    console.log('[Form Effect] Action state received:', state); // Log state received
+
+    if (state.error) {
+      console.error('[Form Effect] Action returned an error:', state.error); // Log error
       toast({
         title: "Error",
         description: state.error,
         variant: "destructive",
-      })
-      onProcessingComplete(null); // Clear previous results on error
-    } else if (state?.topicsSummary || state?.conceptsMap || (state?.keyTopics && state.keyTopics.length > 0) || state?.codeAnalysis?.codeExamples?.length > 0) { // Check for any valid data
-       onProcessingComplete(state);
-       // Optionally reset form after successful submission
-       // formRef.current?.reset();
-    } else if (state) {
-        // Handle cases where processing finished but no meaningful data was extracted (e.g., empty summary, no concepts, no code)
-        onProcessingComplete(state); // Still pass the state so UI can potentially show "Nothing found" messages
+      });
+      onProcessingComplete(state); // Pass error state
+    } else {
+      // Check if *any* data was successfully processed
+      const hasData = state.topicsSummary ||
+                      (state.keyTopics && state.keyTopics.length > 0) ||
+                      state.conceptsMap ||
+                      (state.codeAnalysis && state.codeAnalysis.codeExamples.length > 0);
+
+      if (hasData) {
+          console.log('[Form Effect] Action successful with data.'); // Log success with data
+      } else {
+          console.log('[Form Effect] Action successful, but no data found.'); // Log success no data
+          // Optionally show a different toast or message here if desired
+          // toast({ title: "Analysis Complete", description: "No specific topics, concepts, or code found." });
+      }
+      onProcessingComplete(state); // Pass the result state (even if empty)
+      // Optionally reset form after successful submission
+      // formRef.current?.reset();
     }
-  }, [state, onProcessingComplete, toast]);
+  }, [state, onProcessingComplete, toast]); // Dependencies remain the same
+
 
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault(); // Prevent default form submission
+      console.log('[Form Submit] Form submitted.'); // Log form submission
       onProcessingStart();
       // Manually call the form action with the form data
       const formData = new FormData(event.currentTarget);
+      console.log('[Form Submit] Calling formAction with formData:', formData.get('conversationText')?.substring(0, 100) + '...'); // Log action call
       formAction(formData);
   };
 
@@ -97,3 +116,4 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
     </Card>
   );
 }
+

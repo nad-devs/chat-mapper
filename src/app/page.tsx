@@ -11,15 +11,18 @@ export default function Home() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [results, setResults] = React.useState<ProcessedConversationResult | null>(null);
 
-  const handleProcessingStart = () => {
+ const handleProcessingStart = React.useCallback(() => {
+    console.log('[Page] Processing started.'); // Log start
     setIsLoading(true);
-    setResults(null); // Clear previous results when starting new processing
-  };
+    setResults(null); // Clear previous results
+  }, []);
 
-  const handleProcessingComplete = (processedResults: ProcessedConversationResult | null) => {
+  const handleProcessingComplete = React.useCallback((processedResults: ProcessedConversationResult | null) => {
+    console.log('[Page] Processing complete. Results:', processedResults); // Log completion
     setResults(processedResults);
-    setIsLoading(false);
-  };
+    setIsLoading(false); // Ensure loading is set to false
+  }, []);
+
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-gradient-to-br from-background to-secondary/10">
@@ -44,8 +47,12 @@ export default function Home() {
         />
 
         {isLoading && <LoadingSkeleton />}
-        {/* Pass the full results object which now includes keyTopics and codeAnalysis */}
-        {results && !isLoading && <TopicDisplay results={results} />}
+        {/* Ensure results are only displayed when not loading AND results exist */}
+        {!isLoading && results && <TopicDisplay results={results} />}
+        {/* Optional: Handle case where not loading but results are null/empty explicitly */}
+        {/* {!isLoading && !results && <div>Enter a conversation above and click Analyze.</div>} */}
+        {/* {!isLoading && results && !results.topicsSummary && !(results.keyTopics?.length > 0) && !results.conceptsMap && !(results.codeAnalysis?.codeExamples?.length > 0) && <div>Analysis complete, but no specific information found.</div>} */}
+
 
       </div>
     </main>
