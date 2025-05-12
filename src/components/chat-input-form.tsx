@@ -21,6 +21,7 @@ const initialState: ProcessedConversationResult = {
     topicsSummary: '',
     keyTopics: [], // Initialize keyTopics
     conceptsMap: null,
+    codeAnalysis: null, // Initialize codeAnalysis
     error: null,
 };
 
@@ -47,16 +48,22 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
         variant: "destructive",
       })
       onProcessingComplete(null); // Clear previous results on error
-    } else if (state?.topicsSummary || state?.conceptsMap || (state?.keyTopics && state.keyTopics.length > 0)) { // Check for keyTopics as well
+    } else if (state?.topicsSummary || state?.conceptsMap || (state?.keyTopics && state.keyTopics.length > 0) || state?.codeAnalysis?.codeExamples?.length > 0) { // Check for any valid data
        onProcessingComplete(state);
        // Optionally reset form after successful submission
        // formRef.current?.reset();
+    } else if (state) {
+        // Handle cases where processing finished but no meaningful data was extracted (e.g., empty summary, no concepts, no code)
+        onProcessingComplete(state); // Still pass the state so UI can potentially show "Nothing found" messages
     }
   }, [state, onProcessingComplete, toast]);
 
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault(); // Prevent default form submission
       onProcessingStart();
-      // The formAction will be called automatically by form submission
+      // Manually call the form action with the form data
+      const formData = new FormData(event.currentTarget);
+      formAction(formData);
   };
 
 
@@ -66,7 +73,8 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
         <CardTitle>Input Conversation</CardTitle>
         <CardDescription>Paste your full ChatGPT conversation below.</CardDescription>
       </CardHeader>
-      <form ref={formRef} action={formAction} onSubmit={handleFormSubmit}>
+      {/* Removed form action prop, handle submission manually */}
+      <form ref={formRef} onSubmit={handleFormSubmit}>
         <CardContent>
           <div className="grid w-full gap-1.5">
             <Label htmlFor="conversationText">Conversation Text</Label>
@@ -78,6 +86,7 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
               required
               aria-describedby="conversation-error"
             />
+            {/* Display error from state if present */}
             {state?.error && <p id="conversation-error" className="text-sm font-medium text-destructive">{state.error}</p>}
           </div>
         </CardContent>
@@ -88,4 +97,3 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
     </Card>
   );
 }
-

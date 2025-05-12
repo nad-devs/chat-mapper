@@ -34,7 +34,7 @@ export default function Home() {
             </svg>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">ChatMapper</h1>
           <p className="text-muted-foreground mt-2">
-            Unravel your ChatGPT conversations. Extract topics, map concepts, and see the connections.
+            Unravel your ChatGPT conversations. Extract topics, map concepts, analyze code, and see the connections.
           </p>
         </header>
 
@@ -44,7 +44,7 @@ export default function Home() {
         />
 
         {isLoading && <LoadingSkeleton />}
-        {/* Pass the full results object which now includes keyTopics */}
+        {/* Pass the full results object which now includes keyTopics and codeAnalysis */}
         {results && !isLoading && <TopicDisplay results={results} />}
 
       </div>
@@ -55,22 +55,38 @@ export default function Home() {
 
 function LoadingSkeleton() {
   return (
-    <div className="w-full mt-6 space-y-4">
-        <Skeleton className="h-12 w-1/3" />
-        <Skeleton className="h-32 w-full" />
-         {/* Add skeleton for key topics */}
-        <Skeleton className="h-8 w-1/4 mt-4" />
+    <div className="w-full mt-6 space-y-6">
+      {/* Summary Skeleton */}
+      <div>
+        <Skeleton className="h-8 w-1/3 mb-3" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+       {/* Key Topics Skeleton */}
+      <div>
+        <Skeleton className="h-6 w-1/4 mb-3" />
         <div className="flex flex-wrap gap-2">
             <Skeleton className="h-6 w-24" />
             <Skeleton className="h-6 w-32" />
             <Skeleton className="h-6 w-28" />
         </div>
-        <Skeleton className="h-12 w-1/3 mt-4" />
+      </div>
+      {/* Concept Map Skeleton */}
+       <div>
+        <Skeleton className="h-8 w-1/3 mb-3" />
         <div className="space-y-2">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-5/6" />
         </div>
+      </div>
+      {/* Code Analysis Skeleton */}
+      <div>
+        <Skeleton className="h-8 w-1/3 mb-3" />
+        <div className="space-y-4">
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      </div>
     </div>
   )
 }
