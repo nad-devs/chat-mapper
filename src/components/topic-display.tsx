@@ -17,30 +17,72 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X, CheckSquare } from 'lucide-react';
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X } from 'lucide-react';
+import { cn } from '@/lib/utils'; // Import cn for conditional classes
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
-// Simple renderer, assuming summary is now plain text or basic markdown
+// Simple renderer for plain text or basic markdown (like bullet points)
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
-  // Basic rendering, can be enhanced if needed for simple lists/bold
-  return <div className="prose prose-sm dark:prose-invert max-w-none text-foreground whitespace-pre-wrap">{content}</div>;
+  const lines = content.split('\n');
+  const elements = lines.map((line, index) => {
+    line = line.trim();
+
+    // Handle bullet points (* or -)
+    if (line.startsWith('* ') || line.startsWith('- ')) {
+      return <li key={index} className="ml-5 list-disc">{line.substring(2)}</li>;
+    }
+    // Handle empty lines as paragraph breaks
+    if (line === '') {
+        return <br key={index} />;
+    }
+    // Default paragraph rendering
+    return <p key={index} className="mb-2 last:mb-0">{line}</p>;
+  });
+
+  // Group list items
+   const groupedElements: React.ReactNode[] = [];
+   let currentList: React.ReactNode[] = [];
+
+   elements.forEach((el, index) => {
+     const isListItem = React.isValidElement(el) && el.type === 'li';
+
+     if (isListItem) {
+       currentList.push(el);
+     } else {
+       if (currentList.length > 0) {
+         // End current list
+         groupedElements.push(<ul key={`list-${index}`} className="space-y-1 mb-2 pl-5">{currentList}</ul>);
+         currentList = [];
+       }
+       groupedElements.push(el); // Add non-list element
+     }
+   });
+
+   // Add any remaining list
+   if (currentList.length > 0) {
+     groupedElements.push(<ul key="list-last" className="space-y-1 mb-2 pl-5">{currentList}</ul>);
+   }
+
+  // Apply base text styling
+  return <div className="text-sm text-foreground dark:text-foreground/90">{groupedElements}</div>;
 };
 
-// Renderer for Study Notes (keeps existing more complex formatting)
+// Enhanced renderer for Study Notes (handles H3, lists, code)
 const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
-    line = line.trim(); // Trim both ends
+    const trimmedLine = line.trim();
 
     // Render inline code `` `code` ``
     const renderInlineCode = (text: string) => {
         const parts = text.split(/(`[^`]+`)/);
         return parts.map((part, partIndex) => {
             if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-            return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono">{part.substring(1, part.length - 1)}</code>;
+            // Added styling for inline code
+            return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono text-foreground">{part.substring(1, part.length - 1)}</code>;
             }
             return part;
         });
@@ -51,36 +93,34 @@ const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
         const parts = text.split(/(\*\*.*?\*\*)/g);
         return parts.map((part, partIndex) => {
         if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-            return <strong key={partIndex}>{renderInlineCode(part.substring(2, part.length - 2))}</strong>;
+            return <strong key={partIndex} className="font-semibold">{renderInlineCode(part.substring(2, part.length - 2))}</strong>;
         }
         return renderInlineCode(part);
         });
     };
 
-    if (line.startsWith('### ')) {
-      return <h3 key={index} className="text-lg font-semibold mt-4 mb-2">{renderBold(line.substring(4))}</h3>;
+    if (trimmedLine.startsWith('### ')) {
+      return <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-primary">{renderBold(trimmedLine.substring(4))}</h3>; // Use primary color for headings
     }
-    if (line.startsWith('## ')) {
-      return <h2 key={index} className="text-xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
-    }
-    // Handle checkmark bullets (✔) - kept for potential use elsewhere, but not expected in study notes
-    if (line.startsWith('✔ ')) {
-        const contentPart = renderBold(line.substring(2));
-        return <li key={index} className="ml-5 flex items-start gap-2"><CheckSquare className="h-4 w-4 text-green-500 mt-1 shrink-0" /><span>{contentPart}</span></li>;
-    }
-    // Handle regular bullets (* or -)
-    if (line.startsWith('* ') || line.startsWith('- ')) {
-      return <li key={index} className="ml-5">{renderBold(line.substring(2))}</li>;
+    // Handle bullet points (* or -)
+    if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+      return <li key={index} className="ml-5 list-disc">{renderBold(trimmedLine.substring(2))}</li>;
     }
     // Handle numbered lists (1.)
-    if (/^\d+\.\s/.test(line)) {
-         const match = line.match(/^(\d+\.\s)(.*)/);
+    if (/^\d+\.\s/.test(trimmedLine)) {
+         const match = trimmedLine.match(/^(\d+\.\s)(.*)/);
          if (match) {
             return <li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>;
          }
     }
+    // Handle code blocks ```python ... ```
+    if (trimmedLine.startsWith('```')) {
+       // This is overly simplified, assumes single block. Need state for multi-line blocks.
+       // For now, just render the line itself. A proper parser is needed for full support.
+       return <pre key={index} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border"><code className="font-mono">{line}</code></pre>;
+    }
     // Handle empty lines as breaks
-    if (line === '') {
+    if (trimmedLine === '') {
         return <br key={index} />;
     }
     // Default paragraph rendering
@@ -98,13 +138,13 @@ const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
 
    elements.forEach((el, index) => {
      const isListItem = React.isValidElement(el) && el.type === 'li';
-     const isCheckListItem = isListItem && el.props.children[0]?.type === CheckSquare;
+     // const isCheckListItem = isListItem && el.props.children[0]?.type === CheckSquare; // Removed checkmark specific logic
 
      if (isListItem) {
-       const currentListType = isCheckListItem || el.props.value === undefined ? 'ul' : 'ol';
+       const currentListType = el.props.value === undefined ? 'ul' : 'ol';
        if (listType && listType !== currentListType) {
          const ListComponent = listType === 'ol' ? 'ol' : 'ul';
-         const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && isCheckListItem ? "list-none" : "list-disc");
+         const listClass = listType === 'ol' ? "list-decimal" : "list-disc"; // Simplified list class
          groupedElements.push(<ListComponent key={`list-${index}-prev`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
          currentList = [];
          listType = null;
@@ -116,7 +156,7 @@ const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
      } else {
        if (currentList.length > 0 && listType) {
          const ListComponent = listType === 'ol' ? 'ol' : 'ul';
-         const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+         const listClass = listType === 'ol' ? "list-decimal" : "list-disc"; // Simplified list class
          groupedElements.push(<ListComponent key={`list-${index}`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
          currentList = [];
          listType = null;
@@ -127,18 +167,22 @@ const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
 
    if (currentList.length > 0 && listType) {
      const ListComponent = listType === 'ol' ? 'ol' : 'ul';
-     const listClass = listType === 'ol' ? "list-decimal" : (listType === 'ul' && React.isValidElement(currentList[0]) && currentList[0].props.children[0]?.type === CheckSquare ? "list-none" : "list-disc");
+     const listClass = listType === 'ol' ? "list-decimal" : "list-disc"; // Simplified list class
      groupedElements.push(<ListComponent key="list-last" className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
    }
-   return <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">{groupedElements}</div>;
+   // Apply base styling for readability
+   return <div className="text-sm text-foreground dark:text-foreground/90">{groupedElements}</div>;
 };
 
 
 export function TopicDisplay({ results }: TopicDisplayProps) {
   const { toast } = useToast();
+  // Pass the actual result object to the action, ensuring it's serializable if needed
   const [saveState, saveFormAction, isSaving] = useActionState(saveEntryAction, null);
 
   const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
+
+  // Determine the best topic name to use for saving
   const derivedTopicName = codeAnalysis?.learnedConcept || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : null);
   const defaultTopicName = "Untitled Learning";
   const topicNameToUse = derivedTopicName || defaultTopicName;
@@ -147,11 +191,17 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
   const [editedNotes, setEditedNotes] = React.useState(studyNotes || '');
 
+  // State for editing Learning Summary
+  const [isEditingSummary, setIsEditingSummary] = React.useState(false);
+  const [editedSummary, setEditedSummary] = React.useState(learningSummary || '');
+
   // Update local state if the results prop changes (e.g., new analysis)
   React.useEffect(() => {
     setEditedNotes(studyNotes || '');
+    setEditedSummary(learningSummary || '');
     setIsEditingNotes(false); // Reset editing state on new analysis
-  }, [studyNotes]);
+    setIsEditingSummary(false);
+  }, [studyNotes, learningSummary]);
 
   React.useEffect(() => {
     if (saveState) {
@@ -168,8 +218,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     const topicNameToSave = topicNameToUse;
     const categoryToSave = results.category;
 
-    // Use the potentially EDITED notes, but original summary and code
-    const summaryToSave = results.learningSummary;
+    // Use the potentially EDITED notes and summary, but original code
+    const summaryToSave = editedSummary; // Use edited summary
     const codeSnippetToSave = results.codeAnalysis?.finalCodeSnippet;
     const codeLangToSave = results.codeAnalysis?.codeLanguage;
     const notesToSave = editedNotes; // Use edited notes
@@ -181,7 +231,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
       formData.append('category', categoryToSave);
     }
     if (summaryToSave && summaryToSave.trim().length > 0) {
-      formData.append('learningSummary', summaryToSave);
+      formData.append('learningSummary', summaryToSave); // Changed field name
     }
     if (codeSnippetToSave && codeSnippetToSave.trim().length > 0) {
       formData.append('codeSnippetContent', codeSnippetToSave);
@@ -193,6 +243,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
       formData.append('studyNotesContent', notesToSave);
     }
 
+    // Check if at least one content field has data
     if (!formData.has('learningSummary') && !formData.has('codeSnippetContent') && !formData.has('studyNotesContent')) {
         toast({ title: "Nothing to Save", description: "No content available to save from this analysis." });
         return;
@@ -203,49 +254,61 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     });
   };
 
-  // Handlers for Study Notes Edit
+  // --- Handlers for Editing ---
+
+  // Study Notes Edit
   const handleEditNotes = () => {
-    setEditedNotes(studyNotes || ''); // Reset to original on starting edit
+    setEditedNotes(studyNotes || '');
     setIsEditingNotes(true);
   };
-
-  const handleSaveNotes = () => {
-    // Local save only for display until "Save All Insights" is clicked
+  const handleSaveNotesEdit = () => setIsEditingNotes(false);
+  const handleCancelNotesEdit = () => {
+    setEditedNotes(studyNotes || '');
     setIsEditingNotes(false);
   };
 
-  const handleCancelNotes = () => {
-    setEditedNotes(studyNotes || ''); // Revert to original
-    setIsEditingNotes(false);
+  // Learning Summary Edit
+  const handleEditSummary = () => {
+    setEditedSummary(learningSummary || '');
+    setIsEditingSummary(true);
+  };
+  const handleSaveSummaryEdit = () => setIsEditingSummary(false);
+  const handleCancelSummaryEdit = () => {
+    setEditedSummary(learningSummary || '');
+    setIsEditingSummary(false);
   };
 
-  // Check content based on *original* results and edited notes state
-  const hasOverviewContent = !!learningSummary || (keyTopics && keyTopics.length > 0);
+  // --- Content Checks ---
+  // Check content based on *original* results and edited states
+  const originalSummaryExists = !!learningSummary && learningSummary.trim().length > 0;
+  const originalNotesExist = !!studyNotes && studyNotes.trim().length > 0;
+  const originalCodeExists = !!codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0;
+
+  const hasOverviewContent = originalSummaryExists || (keyTopics && keyTopics.length > 0) || isEditingSummary;
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
-  const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  const notesExist = !!studyNotes && studyNotes.trim().length > 0; // Check original notes
-  const hasStudyNotesContent = notesExist || isEditingNotes;
+  const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || originalCodeExists);
+  const hasStudyNotesContent = originalNotesExist || isEditingNotes;
 
   const availableTabs = [
-    { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
-    { value: 'concepts', label: 'Concept Map', icon: Shapes, hasContent: hasConceptsContent },
-    { value: 'code', label: 'Code Insight', icon: Code, hasContent: hasCodeAnalysisContent },
-    { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
-  ].filter(tab => tab.hasContent);
+    hasOverviewContent && { value: 'overview', label: 'Overview', icon: FileText },
+    hasConceptsContent && { value: 'concepts', label: 'Concept Map', icon: Shapes },
+    hasCodeAnalysisContent && { value: 'code', label: 'Code Insight', icon: Code },
+    hasStudyNotesContent && { value: 'notes', label: 'Study Notes', icon: Lightbulb },
+  ].filter(Boolean) as { value: string, label: string, icon: React.ElementType }[]; // Filter out false values and assert type
 
-  // Check content based on *potentially edited* notes and *original* summary/code
-  const anythingToSave = (learningSummary && learningSummary.trim().length > 0) ||
-                         (results.codeAnalysis?.finalCodeSnippet && results.codeAnalysis.finalCodeSnippet.trim().length > 0) ||
-                         (editedNotes && editedNotes.trim().length > 0); // Check edited notes
+  // Check if anything needs saving (considering edits)
+  const anythingToSave = (editedSummary && editedSummary.trim().length > 0) ||
+                         originalCodeExists ||
+                         (editedNotes && editedNotes.trim().length > 0);
 
 
   if (availableTabs.length === 0) {
     return (
-      <Card className="w-full mt-6">
+      <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
         <CardHeader>
           <CardTitle>Conversation Analysis Results</CardTitle>
            {category && (
-            <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1">
+            <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 border-border text-muted-foreground">
                 <Folder className="h-3 w-3" /> {category}
             </Badge>
            )}
@@ -257,54 +320,79 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     );
   }
 
-  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : 'notes';
+  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : 'overview'; // Default to first available tab
 
   return (
-    <Card className="w-full mt-6">
+    <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
       <CardHeader>
-        <CardTitle>Conversation Analysis: {topicNameToUse}</CardTitle>
-        <CardDescription>Explore the insights extracted from the conversation. You can edit study notes locally before saving.</CardDescription>
+        <CardTitle className="text-foreground">Conversation Analysis: {topicNameToUse}</CardTitle>
+        <CardDescription className="text-muted-foreground">Explore the insights extracted from the conversation. You can edit the summary and notes before saving.</CardDescription>
          {category && (
-            <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm">
+            <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm border-border text-muted-foreground">
                 <Folder className="h-3 w-3" /> {category}
             </Badge>
            )}
       </CardHeader>
       <CardContent>
         <Tabs defaultValue={defaultTabValue} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-4">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-4 bg-muted text-muted-foreground">
              {availableTabs.map((tab) => (
-                 tab ? (
-                     <TabsTrigger key={tab.value} value={tab.value}>
-                         <tab.icon className="mr-2 h-4 w-4" />
-                         {tab.label}
-                     </TabsTrigger>
-                 ) : null
+                 <TabsTrigger key={tab.value} value={tab.value} className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                     <tab.icon className="mr-2 h-4 w-4" />
+                     {tab.label}
+                 </TabsTrigger>
              ))}
           </TabsList>
 
+          {/* Overview Tab */}
           {hasOverviewContent && (
             <TabsContent value="overview" className="space-y-4">
-                {/* Learning Summary Section - Now simpler, no edit button */}
-                <Card className="bg-secondary/30 dark:bg-secondary/10 border border-secondary/50 dark:border-secondary/20">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-md flex items-center gap-2"><FileText className="h-4 w-4 text-secondary-foreground"/>Learning Summary</CardTitle>
+                {/* Learning Summary Section - Now Editable */}
+                <Card className="bg-secondary/30 dark:bg-secondary/10 border border-border/50">
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-md flex items-center gap-2 text-secondary-foreground"><FileText className="h-4 w-4"/>Learning Summary</CardTitle>
+                        {/* Edit/Save/Cancel Buttons for Summary */}
+                         {!isEditingSummary ? (
+                            <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7" disabled={!originalSummaryExists && !isEditingSummary}>
+                                <Edit className="h-4 w-4" />
+                                <span className="sr-only">Edit Learning Summary</span>
+                            </Button>
+                        ) : (
+                            <div className="flex gap-1">
+                                <Button variant="ghost" size="icon" onClick={handleSaveSummaryEdit} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                                    <Save className="h-4 w-4" />
+                                    <span className="sr-only">Save Summary Edit</span>
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={handleCancelSummaryEdit} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                                    <X className="h-4 w-4" />
+                                    <span className="sr-only">Cancel Edit Summary</span>
+                                </Button>
+                            </div>
+                        )}
                     </CardHeader>
                     <CardContent>
-                        <div className="text-foreground dark:text-foreground/90 text-sm">
-                            {learningSummary && learningSummary.trim().length > 0 ? (
-                                <SimpleMarkdownRenderer content={learningSummary} />
-                             ) : (
-                                <span className="italic text-muted-foreground">No learning summary generated.</span>
-                            )}
-                        </div>
+                        {isEditingSummary ? (
+                             <Textarea
+                                value={editedSummary}
+                                onChange={(e) => setEditedSummary(e.target.value)}
+                                rows={5} // Adjust rows as needed
+                                className="w-full text-sm bg-background dark:bg-background/80 border-input"
+                                placeholder="Enter learning summary..."
+                            />
+                        ) : (editedSummary && editedSummary.trim().length > 0) || originalSummaryExists ? (
+                            <div className="text-foreground dark:text-foreground/90 text-sm">
+                                <SimpleMarkdownRenderer content={editedSummary} />
+                            </div>
+                         ) : (
+                            <span className="italic text-muted-foreground text-sm">No learning summary generated.</span>
+                        )}
                     </CardContent>
                 </Card>
 
                 {/* Key Topics Section */}
                 {keyTopics && keyTopics.length > 0 && (
-                    <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-secondary/50 dark:border-secondary/20">
-                      <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><Tags className="h-4 w-4 text-secondary-foreground"/>Key Topics</h3>
+                    <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
+                      <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-secondary-foreground"><Tags className="h-4 w-4"/>Key Topics</h3>
                       <div className="flex flex-wrap gap-2">
                         {keyTopics.map((topic, index) => (
                           <Badge key={`keytopic-${index}`} variant="secondary">{topic}</Badge>
@@ -315,11 +403,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
             </TabsContent>
           )}
 
+          {/* Concept Map Tab */}
           {hasConceptsContent && conceptsMap && (
              <TabsContent value="concepts" className="space-y-4">
                 {conceptsMap.subtopics && conceptsMap.subtopics.length > 0 && (
-                  <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-muted/50 dark:border-muted/20">
-                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><ListTree className="h-4 w-4 text-muted-foreground"/>Subtopics</h3>
+                  <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-border/50">
+                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-muted-foreground"><ListTree className="h-4 w-4"/>Subtopics</h3>
                     <div className="flex flex-wrap gap-2">
                       {conceptsMap.subtopics.map((subtopic, index) => (
                         <Badge key={`subtopic-${index}`} variant="outline" className="border-muted-foreground/50 text-muted-foreground">{subtopic}</Badge>
@@ -328,8 +417,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                   </div>
                 )}
                 {conceptsMap.concepts && conceptsMap.concepts.length > 0 && (
-                   <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-muted/50 dark:border-muted/20">
-                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-muted-foreground"/>Key Concepts</h3>
+                   <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-border/50">
+                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-muted-foreground"><BrainCircuit className="h-4 w-4"/>Key Concepts</h3>
                     <div className="flex flex-wrap gap-2">
                       {conceptsMap.concepts.map((concept, index) => (
                         <Badge key={`concept-${index}`} variant="outline" className="border-accent text-accent">{concept}</Badge>
@@ -338,15 +427,15 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                   </div>
                 )}
                 {conceptsMap.relationships && conceptsMap.relationships.length > 0 && (
-                   <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-muted/50 dark:border-muted/20">
-                    <h3 className="text-md font-semibold mb-3 flex items-center gap-2"><LinkIcon className="h-4 w-4 text-muted-foreground"/>Relationships</h3>
+                   <div className="bg-muted/30 dark:bg-muted/10 p-4 rounded-md border border-border/50">
+                    <h3 className="text-md font-semibold mb-3 flex items-center gap-2 text-muted-foreground"><LinkIcon className="h-4 w-4"/>Relationships</h3>
                     <ScrollArea className="h-[200px] w-full">
                         <ul className="space-y-2 pr-4">
                         {conceptsMap.relationships.map((rel, index) => (
-                            <li key={`rel-${index}`} className="text-sm flex items-center flex-wrap gap-1 p-2 border rounded-md bg-background dark:bg-background/50">
+                            <li key={`rel-${index}`} className="text-sm flex items-center flex-wrap gap-1 p-2 border rounded-md bg-background dark:bg-background/50 border-border/50">
                               <Badge variant="secondary" className="shrink-0">{rel.from}</Badge>
                               <span className="text-muted-foreground mx-1 text-xs">&rarr;</span>
-                              <Badge variant="outline" className="italic text-xs shrink-0">{rel.type}</Badge>
+                              <Badge variant="outline" className="italic text-xs shrink-0 border-border/50 text-muted-foreground">{rel.type}</Badge>
                               <span className="text-muted-foreground mx-1 text-xs">&rarr;</span>
                               <Badge variant="secondary" className="shrink-0">{rel.to}</Badge>
                             </li>
@@ -358,25 +447,27 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
              </TabsContent>
           )}
 
+          {/* Code Insight Tab */}
            {hasCodeAnalysisContent && codeAnalysis && (
              <TabsContent value="code" className="space-y-4">
                {codeAnalysis.learnedConcept && (
                  <div className="bg-primary/10 dark:bg-primary/5 p-4 rounded-md border border-primary/20 dark:border-primary/30">
                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground/90"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
-                   <p className="whitespace-pre-wrap text-foreground dark:text-foreground/80 text-sm">{codeAnalysis.learnedConcept}</p>
+                   {/* Ensure concept text is readable */}
+                   <p className="whitespace-pre-wrap text-sm text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
-                 <Card className="bg-muted/10 dark:bg-muted/20 overflow-hidden border border-muted/50 dark:border-muted/30">
-                   <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/30 border-b border-muted/50 dark:border-muted/30">
+                 <Card className="bg-muted/10 dark:bg-muted/20 overflow-hidden border border-border/50">
+                   <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/30 border-b border-border/50">
                      <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
-                       <CardTitle className="text-sm font-medium">Final Code Example</CardTitle>
-                       {codeAnalysis.codeLanguage && <Badge variant="default" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
+                       <CardTitle className="text-sm font-medium text-foreground">Final Code Example</CardTitle>
+                       {codeAnalysis.codeLanguage && <Badge variant="secondary" className="text-xs mt-1 md:mt-0">{codeAnalysis.codeLanguage}</Badge>}
                      </div>
                    </CardHeader>
                    <CardContent className="p-0">
                      <ScrollArea className="max-h-[400px] w-full">
-                       <pre className="p-4 text-xs bg-background/50 dark:bg-background/20 text-foreground dark:text-foreground/90 whitespace-pre-wrap break-words">
+                       <pre className="p-4 text-xs bg-background/50 dark:bg-background/20 text-foreground dark:text-foreground/90 whitespace-pre-wrap break-words font-mono">
                          <code>{codeAnalysis.finalCodeSnippet}</code>
                        </pre>
                      </ScrollArea>
@@ -384,46 +475,44 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                  </Card>
                )}
                {codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
-                 <div className="text-muted-foreground text-sm p-4 border border-dashed rounded-md">
+                 <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md">
                    No specific code snippet identified for this concept.
                  </div>
                )}
                 {!codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
-                 <div className="text-muted-foreground text-sm p-4 border border-dashed rounded-md">
+                 <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md">
                    No code concepts or snippets were identified.
                  </div>
                )}
              </TabsContent>
            )}
 
-           {/* Study Notes Section */}
+           {/* Study Notes Tab - Editable */}
            {hasStudyNotesContent && (
                 <TabsContent value="notes">
-                    <Card className="bg-secondary/10 dark:bg-secondary/20 border border-secondary/50 dark:border-secondary/30">
-                        <CardHeader className="pb-2">
-                            <div className="flex justify-between items-center">
-                                <CardTitle className="text-md flex items-center gap-2">
-                                <Lightbulb className="h-4 w-4 text-secondary-foreground" />
-                                Study Notes
-                                </CardTitle>
-                                {!isEditingNotes ? (
-                                    <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7" disabled={!notesExist && !isEditingNotes}>
-                                        <Edit className="h-4 w-4" />
-                                        <span className="sr-only">Edit Study Notes</span>
+                    <Card className="bg-secondary/10 dark:bg-secondary/20 border border-border/50">
+                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                            <CardTitle className="text-md flex items-center gap-2 text-secondary-foreground">
+                                <Lightbulb className="h-4 w-4" /> Study Notes
+                            </CardTitle>
+                            {/* Edit/Save/Cancel Buttons for Notes */}
+                            {!isEditingNotes ? (
+                                <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7" disabled={!originalNotesExist && !isEditingNotes}>
+                                    <Edit className="h-4 w-4" />
+                                    <span className="sr-only">Edit Study Notes</span>
+                                </Button>
+                            ) : (
+                                <div className="flex gap-1">
+                                    <Button variant="ghost" size="icon" onClick={handleSaveNotesEdit} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                                        <Save className="h-4 w-4" />
+                                        <span className="sr-only">Save Notes Edit</span>
                                     </Button>
-                                ) : (
-                                    <div className="flex gap-1">
-                                        <Button variant="ghost" size="icon" onClick={handleSaveNotes} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
-                                            <Save className="h-4 w-4" />
-                                            <span className="sr-only">Save Study Notes Edit</span>
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={handleCancelNotes} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
-                                            <X className="h-4 w-4" />
-                                            <span className="sr-only">Cancel Edit Study Notes</span>
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
+                                    <Button variant="ghost" size="icon" onClick={handleCancelNotesEdit} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                                        <X className="h-4 w-4" />
+                                        <span className="sr-only">Cancel Edit Notes</span>
+                                    </Button>
+                                </div>
+                            )}
                         </CardHeader>
                         <CardContent>
                             {isEditingNotes ? (
@@ -431,10 +520,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                     value={editedNotes}
                                     onChange={(e) => setEditedNotes(e.target.value)}
                                     rows={10}
-                                    className="w-full text-sm bg-background dark:bg-background/80"
+                                    className="w-full text-sm bg-background dark:bg-background/80 border-input"
                                     placeholder="Enter study notes here..."
                                 />
-                             ) : notesExist || editedNotes.trim().length > 0 ? ( // Show edited notes even if original was empty
+                             ) : (editedNotes && editedNotes.trim().length > 0) || originalNotesExist ? ( // Show edited notes even if original was empty
                                 <StudyNotesRenderer content={editedNotes} />
                             ) : (
                                 <p className="text-muted-foreground text-sm italic p-4">No study notes were generated for this conversation.</p>
@@ -445,16 +534,22 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
             )}
         </Tabs>
       </CardContent>
-      <CardFooter className="border-t pt-6">
+      {/* Save All Insights Button */}
+      <CardFooter className="border-t border-border pt-6">
         <Button
             onClick={handleSaveAllInsights}
-            disabled={isSaving || !anythingToSave}
+            disabled={isSaving || !anythingToSave} // Disable if nothing to save or currently saving
             aria-label="Save All Insights"
-            className="w-full md:w-auto"
+            className={cn(
+                "w-full md:w-auto",
+                 !anythingToSave && "cursor-not-allowed opacity-50" // Add disabled style visually
+            )}
         >
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
-            {isSaving ? 'Saving All...' : 'Save All Insights to My Learnings'}
+            {isSaving ? 'Saving...' : 'Save Insights to My Learnings'}
         </Button>
+        {saveState?.error && <p className="text-xs text-destructive ml-4">{saveState.error}</p>}
+        {saveState?.success && saveState.info && <p className="text-xs text-green-600 dark:text-green-400 ml-4">{saveState.info}</p>}
       </CardFooter>
     </Card>
   );
