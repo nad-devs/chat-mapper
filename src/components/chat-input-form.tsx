@@ -2,8 +2,8 @@
 'use client';
 
 import * as React from 'react';
-import { useActionState } from 'react'; // Changed from react-dom to react and useFormState to useActionState
-import { useFormStatus } from 'react-dom'; // Import useFormStatus from react-dom
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { processConversation, type ProcessedConversationResult } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -19,9 +19,10 @@ interface ChatInputFormProps {
 
 const initialState: ProcessedConversationResult = {
     topicsSummary: '',
-    keyTopics: [], // Initialize keyTopics
+    keyTopics: [],
     conceptsMap: null,
-    codeAnalysis: null, // Initialize codeAnalysis
+    codeAnalysis: null,
+    struggleNotes: null, // Initialize struggleNotes
     error: null,
 };
 
@@ -36,7 +37,7 @@ function SubmitButton() {
 }
 
 export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatInputFormProps) {
-  const [state, formAction] = useActionState(processConversation, initialState); // Renamed to useActionState
+  const [state, formAction] = useActionState(processConversation, initialState);
   const { toast } = useToast();
   const formRef = React.useRef<HTMLFormElement>(null);
 
@@ -60,14 +61,14 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
       const hasData = state.topicsSummary ||
                       (state.keyTopics && state.keyTopics.length > 0) ||
                       state.conceptsMap ||
-                      (state.codeAnalysis && (state.codeAnalysis.learnedConcept || state.codeAnalysis.finalCodeSnippet)); // Updated check for codeAnalysis
+                      (state.codeAnalysis && (state.codeAnalysis.learnedConcept || state.codeAnalysis.finalCodeSnippet)) ||
+                      state.struggleNotes; // Updated check for any data including struggleNotes
 
       if (hasData) {
           console.log('[Form Effect] Action successful with data.'); // Log success with data
       } else {
           console.log('[Form Effect] Action successful, but no significant data found.'); // Log success no data
-          // Optionally show a different toast or message here if desired
-          toast({ title: "Analysis Complete", description: "No specific topics, concepts, or code insights found." });
+          toast({ title: "Analysis Complete", description: "No specific topics, concepts, code insights, or study notes found." });
       }
       onProcessingComplete(state); // Pass the result state (even if empty)
       // Optionally reset form after successful submission
@@ -124,4 +125,3 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
     </Card>
   );
 }
-

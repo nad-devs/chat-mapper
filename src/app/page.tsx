@@ -36,7 +36,7 @@ export default function Home() {
             </svg>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">ChatMapper</h1>
           <p className="text-muted-foreground mt-2">
-            Unravel your ChatGPT conversations. Extract topics, map concepts, analyze code, and see the connections.
+            Unravel your ChatGPT conversations. Extract topics, map concepts, analyze code, get study notes, and see the connections.
           </p>
         </header>
 
@@ -64,40 +64,48 @@ export default function Home() {
 function LoadingSkeleton() {
   return (
     <div className="w-full mt-6 space-y-6">
-      {/* Summary Skeleton */}
+       {/* Tabs Skeleton */}
+       <Skeleton className="h-10 w-full mb-4" />
+
+      {/* Overview Skeleton (Summary + Key Topics) */}
       <div>
-        <Skeleton className="h-8 w-1/3 mb-3" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-       {/* Key Topics Skeleton */}
-      <div>
-        <Skeleton className="h-6 w-1/4 mb-3" />
+        <Skeleton className="h-6 w-1/3 mb-3" /> {/* "Summary" title skeleton */}
+        <Skeleton className="h-20 w-full mb-4" /> {/* Summary paragraph skeleton */}
+        <Skeleton className="h-5 w-1/4 mb-2" /> {/* "Key Topics" title skeleton */}
         <div className="flex flex-wrap gap-2">
             <Skeleton className="h-6 w-24" />
             <Skeleton className="h-6 w-32" />
             <Skeleton className="h-6 w-28" />
         </div>
       </div>
+
       {/* Concept Map Skeleton */}
-       <div>
-        <Skeleton className="h-8 w-1/3 mb-3" />
+       <div className="pt-4">
+        <Skeleton className="h-6 w-1/3 mb-3" /> {/* "Concept Map" title skeleton */}
         <div className="space-y-2">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-5/6" />
         </div>
       </div>
-      {/* Updated Code Analysis Skeleton */}
-      <div>
-        <Skeleton className="h-8 w-1/3 mb-3" /> {/* "Code Insight" title skeleton */}
+
+      {/* Code Insight Skeleton */}
+      <div className="pt-4">
+        <Skeleton className="h-6 w-1/3 mb-3" /> {/* "Code Insight" title skeleton */}
         <div className="space-y-4">
            {/* Skeleton for Learned Concept */}
-          <Skeleton className="h-6 w-1/2 mb-2" /> {/* Concept title skeleton */}
-          <Skeleton className="h-16 w-full" /> {/* Concept description skeleton */}
+          <Skeleton className="h-5 w-1/2 mb-2" /> {/* Concept title skeleton */}
+          <Skeleton className="h-16 w-full mb-4" /> {/* Concept description skeleton */}
            {/* Skeleton for Final Code Snippet */}
-          <Skeleton className="h-6 w-1/4 mb-2" /> {/* Code title skeleton */}
-          <Skeleton className="h-40 w-full" /> {/* Code block skeleton */}
+          <Skeleton className="h-5 w-1/4 mb-2" /> {/* Code title skeleton */}
+          <Skeleton className="h-32 w-full" /> {/* Code block skeleton */}
         </div>
+      </div>
+
+       {/* Study Notes Skeleton */}
+      <div className="pt-4">
+        <Skeleton className="h-6 w-1/3 mb-3" /> {/* "Study Notes" title skeleton */}
+        <Skeleton className="h-24 w-full" /> {/* Notes content skeleton */}
       </div>
     </div>
   )

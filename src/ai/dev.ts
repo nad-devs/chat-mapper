@@ -5,4 +5,6 @@ config();
 // Make sure the paths to your AI flows are correct
 import '@/ai/flows/map-concepts';
 import '@/ai/flows/summarize-topics';
-import '@/ai/flows/analyze-code'; // Path remains the same, but points to the updated flow
+import '@/ai/flows/analyze-code';
+import '@/ai/flows/generate-struggle-notes'; // Add the new flow
+
