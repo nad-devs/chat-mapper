@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useActionState, startTransition } from 'react';
 import { ChatInputForm } from '@/components/chat-input-form';
 import { TopicDisplay } from '@/components/topic-display';
-import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions'; // Removed LearningEntry import
+import type { ProcessedConversationResult, GenerateQuizResult } from '@/app/actions';
 import { generateQuizTopicsAction } from '@/app/actions';
 import { QuizDisplay } from '@/components/quiz-display';
 import type { QuizTopic } from '@/ai/flows/generate-quiz-topics';
@@ -36,6 +36,7 @@ export default function Home() {
   // State for initial conversation processing
   const [isLoadingAnalysis, setIsLoadingAnalysis] = React.useState(false);
   const [analysisResults, setAnalysisResults] = React.useState<ProcessedConversationResult | null>(null);
+  const [analysisError, setAnalysisError] = React.useState<string | null>(null); // Separate state for error display
 
   // State for quiz generation and interaction
   const [isGeneratingQuiz, setIsGeneratingQuiz] = React.useState(false);
@@ -55,6 +56,8 @@ export default function Home() {
     console.log('[Page] Analysis Processing started.');
     setIsLoadingAnalysis(true);
     setAnalysisResults(null);
+    setAnalysisError(null); // Clear previous errors
+    // Reset quiz states as well
     setIsGeneratingQuiz(false);
     setIsQuizzing(false);
     setQuizTopics(null);
@@ -65,30 +68,50 @@ export default function Home() {
 
   const handleAnalysisComplete = React.useCallback((processedResults: ProcessedConversationResult | null) => {
     console.log('[Page] Analysis Processing complete. Results:', processedResults);
-    setAnalysisResults(processedResults);
-    setIsLoadingAnalysis(false);
+    setIsLoadingAnalysis(false); // Stop loading indicator
 
-    // Show toast message based on result, including potential save errors
-    if (processedResults?.error) {
-       toast({
-           title: "Analysis Complete with Issues",
-           description: processedResults.error, // Display AI or DB error
-           variant: "destructive" // Use destructive variant for errors
-        });
-    } else if (processedResults) {
-       toast({
-           title: "Analysis Complete",
-           description: "Conversation analyzed and results saved successfully."
-        });
+    if (processedResults) {
+        setAnalysisResults(processedResults); // Store results
+        setAnalysisError(processedResults.error ?? null); // Store potential error message
+
+        // Show toast message based on result
+        if (processedResults.error) {
+            // Check if it's likely a DB save error vs. a critical AI failure
+            if (processedResults.error.toLowerCase().includes('database') || processedResults.error.toLowerCase().includes('firestore')) {
+                 toast({
+                    title: "Analysis Complete with Save Issues",
+                    description: processedResults.error, // Display DB error
+                    variant: "destructive", // Use destructive variant for errors
+                    duration: 9000 // Keep toast longer for important errors
+                });
+            } else {
+                 // For other errors (e.g., validation, critical AI failure handled in action)
+                 // The error will also be displayed in the dedicated error div below the form.
+                 // No redundant toast needed here, as the error div is more prominent for critical failures.
+                 console.log("[Page] Analysis completed with non-DB error, will be displayed in error div:", processedResults.error);
+            }
+        } else {
+            // Success case
+            toast({
+                title: "Analysis Complete",
+                description: "Conversation analyzed successfully." // Removed "and saved" as saving might have partial errors handled above
+            });
+        }
     } else {
-        // Handle case where processing somehow completed but results are null (should ideally not happen)
+        // Handle case where processing somehow completed but results are null
+        console.error('[Page] Analysis processing returned null results.');
+        const errorMsg = "Processing finished, but no results were returned. Please try again.";
+        setAnalysisResults(null); // Ensure results are null
+        setAnalysisError(errorMsg); // Set error message
         toast({
-           title: "Analysis Ended",
-           description: "Processing finished, but no results were returned.",
-           variant: "destructive"
+           title: "Analysis Error",
+           description: errorMsg,
+           variant: "destructive",
+           duration: 9000
         });
     }
   }, [toast]);
+
 
   // --- Handler for Starting Quiz Generation ---
   const handleStartQuizGeneration = () => {
@@ -112,22 +135,24 @@ export default function Home() {
 
    // --- Effect to handle Quiz Generation Action Results ---
   React.useEffect(() => {
+    // Only react when the action is no longer pending and the state isn't the initial one
     if (!isQuizActionPending && quizState !== initialQuizState) {
       console.log('[Page Effect] Quiz Generation Action state received:', quizState);
-      setIsGeneratingQuiz(false);
+      setIsGeneratingQuiz(false); // Stop quiz generation loading indicator
 
       if (quizState.error) {
         console.error('[Page Effect] Quiz generation failed:', quizState.error);
-        toast({ title: "Quiz Error", description: quizState.error, variant: "destructive" });
+        toast({ title: "Quiz Generation Error", description: quizState.error, variant: "destructive" });
         setQuizTopics(null);
         setIsQuizzing(false);
       } else if (quizState.quizTopics && quizState.quizTopics.length > 0) {
         console.log('[Page Effect] Quiz topics generated successfully.');
         setQuizTopics(quizState.quizTopics);
-        setIsQuizzing(true);
-        setShowQuizSummary(false);
+        setIsQuizzing(true); // Start the quiz display
+        setShowQuizSummary(false); // Hide summary if shown before
       } else {
-         console.log('[Page Effect] No quiz topics could be generated.');
+         // Handle case where AI returns empty topics array (valid, but maybe not expected)
+         console.log('[Page Effect] No quiz topics could be generated from this conversation.');
          toast({ title: "Quiz Info", description: "Could not generate specific quiz topics from this conversation." });
          setQuizTopics(null);
          setIsQuizzing(false);
@@ -141,8 +166,8 @@ export default function Home() {
     console.log('[Page] Quiz completed.');
     setRememberedTopics(remembered);
     setReviewTopics(review);
-    setIsQuizzing(false);
-    setShowQuizSummary(true);
+    setIsQuizzing(false); // Quiz display hides
+    setShowQuizSummary(true); // Show the summary card
   }, []);
 
   // --- Handler for Updating Study Notes ---
@@ -152,17 +177,20 @@ export default function Home() {
       // Note: This only updates the local state for the current session.
       // To persist, would need to call a separate save action here.
       // For now, just show a toast indicating local update.
+       console.log("[Page] Locally updating study notes.");
       return {
         ...prevResults,
         studyNotes: updatedNotes,
       };
     });
-     toast({ title: "Notes Updated", description: "Your study notes have been updated locally for this session. Re-analyze to save changes." });
+     toast({ title: "Notes Updated Locally", description: "Your study notes have been updated for this session. Re-analyze to save changes permanently." });
   }, [toast]);
 
+  // --- Handler for going back from Quiz Summary ---
   const handleRestartQuizFlow = () => {
-    setShowQuizSummary(false);
-    setIsQuizzing(false);
+    setShowQuizSummary(false); // Hide summary
+    setIsQuizzing(false); // Ensure quiz display is hidden
+    // Analysis results remain visible
   };
 
 
@@ -196,14 +224,23 @@ export default function Home() {
         {/* Loading/Results Display Logic */}
         {isLoadingAnalysis && <LoadingSkeleton />}
 
-         {/* Display Analysis Results (hide if quizzing or showing summary) */}
-        {!isLoadingAnalysis && analysisResults && !analysisResults.error && !isQuizzing && !showQuizSummary && (
+         {/* Display Analysis Error (if any, show below form, hide during quiz/summary) */}
+         {!isLoadingAnalysis && analysisError && !isQuizzing && !showQuizSummary && (
+             <div className="text-center text-red-500 dark:text-red-400 mt-6 p-4 border border-red-500/50 dark:border-red-400/50 bg-red-500/10 dark:bg-red-900/20 rounded-md">
+                 Analysis Error: {analysisError}
+             </div>
+         )}
+
+
+         {/* Display Analysis Results (only if no error, not loading, and not quizzing/summarizing) */}
+        {!isLoadingAnalysis && analysisResults && !analysisError && !isQuizzing && !showQuizSummary && (
             <>
                 <TopicDisplay results={analysisResults} onNotesUpdate={handleNotesUpdate} />
+                {/* Conditionally render quiz button only if analysis was successful */}
                 <div className="text-center mt-6">
                     <Button
                         onClick={handleStartQuizGeneration}
-                        disabled={isGeneratingQuiz || isQuizActionPending}
+                        disabled={isGeneratingQuiz || isQuizActionPending} // Disable while quiz is generating/pending
                     >
                         {(isGeneratingQuiz || isQuizActionPending) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Brain className="mr-2 h-4 w-4" />}
                         {(isGeneratingQuiz || isQuizActionPending) ? 'Generating Quiz...' : 'Start Recall Quiz'}
@@ -211,13 +248,6 @@ export default function Home() {
                  </div>
             </>
         )}
-         {/* Display analysis error (AI or DB save error - hide if loading, quizzing, or showing summary) */}
-         {!isLoadingAnalysis && analysisResults?.error && !isQuizzing && !showQuizSummary && (
-            <div className="text-center text-red-500 dark:text-red-400 mt-6 p-4 border border-red-500/50 dark:border-red-400/50 bg-red-500/10 dark:bg-red-900/20 rounded-md">
-              Analysis Error: {analysisResults.error}
-            </div>
-        )}
-
 
         {/* Display Quiz Interface */}
         {isQuizzing && quizTopics && (
@@ -236,10 +266,10 @@ export default function Home() {
             />
         )}
 
-        {/* Initial State / Placeholder Message (hide if loading, results available, quizzing, or showing summary) */}
-        {!isLoadingAnalysis && !analysisResults && !isQuizzing && !showQuizSummary && (
+        {/* Initial State / Placeholder Message (hide if loading, results available or error displayed, quizzing, or showing summary) */}
+        {!isLoadingAnalysis && !analysisResults && !analysisError && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-muted-foreground mt-6">
-              Enter a conversation above and click Analyze to see the results and save them.
+              Enter a conversation above and click Analyze to see the results. Successful analyses will be saved automatically.
             </div>
         )}
 
@@ -338,8 +368,12 @@ function QuizSummary({ remembered, review, onRestart }: QuizSummaryProps) {
                 </div>
             </CardContent>
              <CardFooter>
-                 <Button onClick={onRestart} variant="outline">Back to Analysis</Button>
+                 {/* Changed button text for clarity */}
+                 <Button onClick={onRestart} variant="outline">
+                     <ArrowLeft className="mr-2 h-4 w-4" /> Back to Analysis Results
+                 </Button>
              </CardFooter>
         </Card>
     );
 }
+

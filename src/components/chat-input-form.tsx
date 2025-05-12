@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast"
+// Removed useToast import as it's no longer needed here
 
 interface ChatInputFormProps {
   onProcessingStart: () => void;
@@ -33,7 +33,7 @@ const initialState: ProcessedConversationResult = {
 
 export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProcessing }: ChatInputFormProps) {
   const [state, formAction, isActionPending] = useActionState(processConversation, initialState);
-  const { toast } = useToast();
+  // Removed toast usage
   const formRef = React.useRef<HTMLFormElement>(null);
   // isPending from useFormStatus reflects the form's *own* pending state
   const isLocallyPending = useFormStatus().pending;
@@ -42,26 +42,15 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
 
   React.useEffect(() => {
     // Check if the action is NOT pending AND the state has changed from the initial state
-    if (!isActionPending && state !== initialState) {
+    // or if the state contains an error (even if other fields haven't changed significantly)
+    if (!isActionPending && (state !== initialState || state?.error)) {
         console.log('[Form Effect] Action state received:', state);
 
-        // Let the parent page component handle displaying success/error toasts based on the state.error field.
-        // This form component doesn't need to show toasts itself anymore.
-        // Example: If state.error has a DB error, the parent will show it.
-        // if (state.error) {
-        //   console.error('[Form Effect] Action returned an error:', state.error);
-        //   toast({
-        //     title: "Error",
-        //     description: state.error, // This could be AI error or DB save error
-        //     variant: "destructive",
-        //   });
-        // }
-
         // Always call the completion callback to update the parent component's state
+        // The parent component (page.tsx) will handle displaying errors and results.
         onProcessingComplete(state);
     }
-     // We only want this effect to run when the action completes (isActionPending becomes false)
-     // and the state object itself has potentially changed. Adding state to dependencies.
+     // Dependencies ensure this effect runs when the action completes or the state updates.
   }, [state, isActionPending, onProcessingComplete]);
 
 
@@ -82,7 +71,7 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
     <Card className="w-full">
       <CardHeader>
         <CardTitle>Input Conversation</CardTitle>
-        <CardDescription>Paste your full ChatGPT conversation below. Analysis results will be saved.</CardDescription>
+        <CardDescription>Paste your full ChatGPT conversation below. Analysis results will be saved automatically if successful.</CardDescription>
       </CardHeader>
       {/* Use the formAction prop directly */}
       <form
@@ -102,18 +91,17 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
                 rows={15}
                 required
                 // Use aria-invalid based on error state for accessibility
+                // The error state is checked by the parent, not displayed here
                 aria-invalid={!!state?.error && !isActionPending}
-                aria-describedby="conversation-error"
+                aria-describedby="conversation-error-hint" // Hint for parent error display
                 className="group-disabled:opacity-50" // Style when disabled
-                // Optionally clear text on successful submission (or keep it)
-                // defaultValue={initialState.originalConversationText} // Or manage via state if needed
+                // Set defaultValue to allow re-submission if needed after error
+                defaultValue={state?.originalConversationText || ''}
                 />
-                {/* Display error state from action if available and not pending */}
-                {state?.error && !isActionPending && (
-                    <p id="conversation-error" className="text-sm font-medium text-destructive pt-1">
-                        {state.error}
-                    </p>
-                 )}
+                {/* Removed error display paragraph here - handled by parent */}
+                 <p id="conversation-error-hint" className="sr-only">
+                    If there is an error, it will be displayed below this form after processing.
+                 </p>
             </div>
             </CardContent>
             <CardFooter>
