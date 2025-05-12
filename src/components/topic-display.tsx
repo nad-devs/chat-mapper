@@ -227,9 +227,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
 
-  // Simplify title logic: Use Category if available, otherwise a default.
+  // Use category as title if available, otherwise a default
   const displayTitle = category || "Analysis Results";
-  // Determine a topic name suitable for saving, could be the first key topic or concept learned
+
+  // Determine a topic name suitable for saving
   const topicNameToSave = codeAnalysis?.learnedConcept || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : null) || category || "Untitled Learning";
 
   // State for editing Study Notes
@@ -347,7 +348,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     return (
       <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
         <CardHeader>
-          <CardTitle>Conversation Analysis Results</CardTitle>
+          <CardTitle className="text-foreground">Analysis Results</CardTitle> {/* Display default title */}
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">No significant topics, concepts, code insights, or study notes were generated from this conversation.</p>
@@ -361,15 +362,15 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   return (
     <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
       <CardHeader>
-        <CardTitle className="text-foreground">{displayTitle}</CardTitle> {/* Use simplified title */}
+        <CardTitle className="text-foreground">{displayTitle}</CardTitle> {/* Use simplified title logic */}
         <CardDescription className="text-muted-foreground">Explore the insights extracted from the conversation. You can edit the summary and notes before saving.</CardDescription>
-         {/* Display Category Badge if different from Title (e.g., if title is default) */}
+         {/* Display Category Badge if it exists and is different from Title (e.g., if title is default) */}
          {category && category !== displayTitle && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm border-border text-muted-foreground">
                 <Folder className="h-3 w-3" /> {category}
             </Badge>
            )}
-         {/* If title is category, show first key topic as a hint if available */}
+         {/* If title IS category, show first key topic as a hint if available */}
          {category && category === displayTitle && keyTopics && keyTopics.length > 0 && (
              <p className="text-xs text-muted-foreground mt-1">(Main Topic: {keyTopics[0]})</p>
          )}
@@ -494,8 +495,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                {codeAnalysis.learnedConcept && (
                  <div className="bg-primary/10 dark:bg-primary/5 p-4 rounded-md border border-primary/20 dark:border-primary/30">
                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground/90"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
-                   {/* Ensure concept text is readable */}
-                   <p className="whitespace-pre-wrap text-sm text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p> {/* Changed color */}
+                   {/* Apply text-foreground to ensure visibility */}
+                   <p className="whitespace-pre-wrap text-sm text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
