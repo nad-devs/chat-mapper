@@ -24,9 +24,10 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
     // Inline code ticks: `code` becomes <code>code</code>
     const renderInlineCode = (text: string) => {
-      const parts = text.split(/(`.*?`)/g);
+      // Match code ticks that are not escaped
+      const parts = text.split(/(`.+?`)/g);
       return parts.map((part, partIndex) => {
-        if (part.startsWith('`') && part.endsWith('`')) {
+        if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
           return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono">{part.substring(1, part.length - 1)}</code>;
         }
         return part;
@@ -35,22 +36,29 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
      // Basic bold support: **bold** becomes <strong>bold</strong>
     const renderBold = (text: string) => {
+        // Match bold markers that are not escaped
         const parts = text.split(/(\*\*.*?\*\*)/g);
         return parts.map((part, partIndex) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
+        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+            // Apply inline code rendering within bold text
             return <strong key={partIndex}>{renderInlineCode(part.substring(2, part.length - 2))}</strong>;
         }
+        // Apply inline code rendering to non-bold parts as well
         return renderInlineCode(part);
         });
     };
 
     if (line.startsWith('## ')) {
       // H3 headings
-      return <h3 key={index} className="text-lg font-semibold mt-3 mb-2">{renderBold(line.substring(3))}</h3>;
+      return <h3 key={index} className="text-lg font-semibold mt-4 mb-2">{renderBold(line.substring(3))}</h3>;
     }
     if (line.startsWith('* ') || line.startsWith('- ')) {
       // Basic bullet points
-      return <li key={index} className="ml-4 list-disc">{renderBold(line.substring(2))}</li>;
+      return <li key={index} className="ml-4">{renderBold(line.substring(2))}</li>;
+    }
+    // Handle empty lines as paragraph breaks
+    if (line === '') {
+        return <div key={index} className="h-2"></div>; // Render a small space for empty lines
     }
 
     // Regular paragraph with bold and inline code support
@@ -62,24 +70,29 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   });
 
   // Wrap list items in a <ul> if they are consecutive
-   const groupedElements = [];
+   const groupedElements: React.ReactNode[] = [];
    let currentList: React.ReactNode[] = [];
 
    elements.forEach((el, index) => {
-     if (React.isValidElement(el) && el.type === 'li') {
+     // Check if the element is a list item
+     const isListItem = React.isValidElement(el) && el.type === 'li';
+
+     if (isListItem) {
        currentList.push(el);
      } else {
+       // If we were building a list, close it and add it to groupedElements
        if (currentList.length > 0) {
-         groupedElements.push(<ul key={`ul-${index}`} className="space-y-1 mb-2">{currentList}</ul>);
-         currentList = [];
+         groupedElements.push(<ul key={`ul-${index}`} className="space-y-1 mb-2 list-disc pl-5">{currentList}</ul>);
+         currentList = []; // Reset the list
        }
+       // Add the current non-list element
        groupedElements.push(el);
      }
    });
 
-   // Add any remaining list items
+   // Add any remaining list items at the end
    if (currentList.length > 0) {
-     groupedElements.push(<ul key="ul-last" className="space-y-1 mb-2">{currentList}</ul>);
+     groupedElements.push(<ul key="ul-last" className="space-y-1 mb-2 list-disc pl-5">{currentList}</ul>);
    }
 
   return <>{groupedElements}</>;
@@ -206,10 +219,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
            {hasCodeAnalysisContent && codeAnalysis && (
              <TabsContent value="code" className="space-y-4">
                {codeAnalysis.learnedConcept && (
-                 <div className="bg-accent/10 p-4 rounded-md">
-                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-accent"/>Concept Learned / Problem Solved</h3>
-                   {/* Removed text-accent-foreground to improve contrast */}
-                   <p className="whitespace-pre-wrap">{codeAnalysis.learnedConcept}</p>
+                 <div className="bg-primary/10 p-4 rounded-md border border-primary/20">
+                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2"><BrainCircuit className="h-4 w-4 text-primary-foreground"/>Concept Learned / Problem Solved</h3>
+                   {/* Use standard foreground color for readability */}
+                   <p className="whitespace-pre-wrap text-foreground">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
@@ -247,14 +260,14 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
            {/* Study Notes Tab */}
            {hasStudyNotesContent && studyNotes && ( // Updated field name
                 <TabsContent value="notes">
-                    <div className="bg-primary/10 p-4 rounded-md border border-primary/20">
+                    <div className="bg-secondary/10 p-4 rounded-md border border-secondary/20">
                         <h3 className="text-md font-semibold mb-3 flex items-center gap-2">
-                           <Lightbulb className="h-4 w-4 text-primary-foreground" />
-                           Study Notes {/* Updated title */}
+                           <Lightbulb className="h-4 w-4 text-secondary-foreground" />
+                           Study Notes
                         </h3>
-                        {/* Updated prose classes for better styling */}
-                        <div className="text-primary-foreground prose prose-sm dark:prose-invert max-w-none prose-headings:text-primary-foreground prose-strong:text-primary-foreground prose-code:text-primary-foreground prose-code:bg-primary/20 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-li:marker:text-primary-foreground">
-                            <SimpleMarkdownRenderer content={studyNotes} /> {/* Updated field name */}
+                        {/* Simplified prose classes, relying more on theme defaults */}
+                        <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:mb-2 prose-ul:my-2 prose-li:my-0 prose-li:marker:text-muted-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:font-normal prose-strong:font-semibold text-foreground">
+                            <SimpleMarkdownRenderer content={studyNotes} />
                         </div>
                     </div>
                 </TabsContent>
