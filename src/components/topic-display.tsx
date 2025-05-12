@@ -30,40 +30,86 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const elements = lines.map((line, index) => {
     line = line.trim();
 
+    // Render inline code `` `code` ``
+    const renderInlineCode = (text: string) => {
+        const parts = text.split(/(`[^`]+`)/);
+        return parts.map((part, partIndex) => {
+            if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+            // Added styling for inline code
+            return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono text-foreground">{part.substring(1, part.length - 1)}</code>;
+            }
+            return part;
+        });
+    };
+
+     // Render bold **text**
+    const renderBold = (text: string) => {
+        const parts = text.split(/(\*\*.*?\*\*)/g);
+        return parts.map((part, partIndex) => {
+        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+            return <strong key={partIndex} className="font-semibold">{renderInlineCode(part.substring(2, part.length - 2))}</strong>;
+        }
+        return renderInlineCode(part);
+        });
+    };
+
     // Handle bullet points (* or -)
     if (line.startsWith('* ') || line.startsWith('- ')) {
-      return <li key={index} className="ml-5 list-disc">{line.substring(2)}</li>;
+      return <li key={index} className="ml-5 list-disc">{renderBold(line.substring(2))}</li>;
+    }
+     // Handle numbered lists (1.)
+    if (/^\d+\.\s/.test(line)) {
+         const match = line.match(/^(\d+\.\s)(.*)/);
+         if (match) {
+            return <li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>;
+         }
     }
     // Handle empty lines as paragraph breaks
     if (line === '') {
         return <br key={index} />;
     }
     // Default paragraph rendering
-    return <p key={index} className="mb-2 last:mb-0">{line}</p>;
+    return <p key={index} className="mb-2 last:mb-0">{renderBold(line)}</p>;
   });
 
   // Group list items
    const groupedElements: React.ReactNode[] = [];
    let currentList: React.ReactNode[] = [];
+   let listType: 'ul' | 'ol' | null = null;
 
    elements.forEach((el, index) => {
      const isListItem = React.isValidElement(el) && el.type === 'li';
 
      if (isListItem) {
+        const currentListType = el.props.value === undefined ? 'ul' : 'ol';
+        if (listType && listType !== currentListType) {
+         const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+         const listClass = listType === 'ol' ? "list-decimal" : "list-disc";
+         groupedElements.push(<ListComponent key={`list-${index}-prev`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
+         currentList = [];
+         listType = null;
+        }
+        if (!listType) {
+         listType = currentListType;
+        }
        currentList.push(el);
      } else {
-       if (currentList.length > 0) {
-         // End current list
-         groupedElements.push(<ul key={`list-${index}`} className="space-y-1 mb-2 pl-5">{currentList}</ul>);
+       if (currentList.length > 0 && listType) {
+         const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+         const listClass = listType === 'ol' ? "list-decimal" : "list-disc";
+         groupedElements.push(<ListComponent key={`list-${index}`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
          currentList = [];
+         listType = null;
        }
        groupedElements.push(el); // Add non-list element
      }
    });
 
    // Add any remaining list
-   if (currentList.length > 0) {
-     groupedElements.push(<ul key="list-last" className="space-y-1 mb-2 pl-5">{currentList}</ul>);
+   if (currentList.length > 0 && listType) {
+     const ListComponent = listType === 'ol' ? 'ol' : 'ul';
+     const listClass = listType === 'ol' ? "list-decimal" : "list-disc";
+     groupedElements.push(<ListComponent key="list-last" className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
    }
 
   // Apply base text styling
@@ -117,6 +163,7 @@ const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
     if (trimmedLine.startsWith('```')) {
        // This is overly simplified, assumes single block. Need state for multi-line blocks.
        // For now, just render the line itself. A proper parser is needed for full support.
+       // Consider using a markdown library for better code block handling if needed
        return <pre key={index} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border"><code className="font-mono">{line}</code></pre>;
     }
     // Handle empty lines as breaks
@@ -138,7 +185,6 @@ const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
 
    elements.forEach((el, index) => {
      const isListItem = React.isValidElement(el) && el.type === 'li';
-     // const isCheckListItem = isListItem && el.props.children[0]?.type === CheckSquare; // Removed checkmark specific logic
 
      if (isListItem) {
        const currentListType = el.props.value === undefined ? 'ul' : 'ol';
@@ -177,15 +223,14 @@ const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 export function TopicDisplay({ results }: TopicDisplayProps) {
   const { toast } = useToast();
-  // Pass the actual result object to the action, ensuring it's serializable if needed
   const [saveState, saveFormAction, isSaving] = useActionState(saveEntryAction, null);
 
   const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
 
-  // Determine the best topic name to use for saving
-  const derivedTopicName = codeAnalysis?.learnedConcept || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : null);
-  const defaultTopicName = "Untitled Learning";
-  const topicNameToUse = derivedTopicName || defaultTopicName;
+  // Simplify title logic: Use Category if available, otherwise a default.
+  const displayTitle = category || "Analysis Results";
+  // Determine a topic name suitable for saving, could be the first key topic or concept learned
+  const topicNameToSave = codeAnalysis?.learnedConcept || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : null) || category || "Untitled Learning";
 
   // State for editing Study Notes
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
@@ -215,20 +260,16 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
 
   const handleSaveAllInsights = () => {
-    const topicNameToSave = topicNameToUse;
-    const categoryToSave = results.category;
-
     // Use the potentially EDITED notes and summary, but original code
     const summaryToSave = editedSummary; // Use edited summary
     const codeSnippetToSave = results.codeAnalysis?.finalCodeSnippet;
     const codeLangToSave = results.codeAnalysis?.codeLanguage;
     const notesToSave = editedNotes; // Use edited notes
 
-
     const formData = new FormData();
-    formData.append('topicName', topicNameToSave);
-    if (categoryToSave) {
-      formData.append('category', categoryToSave);
+    formData.append('topicName', topicNameToSave); // Use the derived topic name
+    if (category) { // Use the original category for saving
+      formData.append('category', category);
     }
     if (summaryToSave && summaryToSave.trim().length > 0) {
       formData.append('learningSummary', summaryToSave); // Changed field name
@@ -302,16 +343,11 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                          (editedNotes && editedNotes.trim().length > 0);
 
 
-  if (availableTabs.length === 0) {
+  if (availableTabs.length === 0 && !category) { // Also check category for minimal display
     return (
       <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
         <CardHeader>
           <CardTitle>Conversation Analysis Results</CardTitle>
-           {category && (
-            <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 border-border text-muted-foreground">
-                <Folder className="h-3 w-3" /> {category}
-            </Badge>
-           )}
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">No significant topics, concepts, code insights, or study notes were generated from this conversation.</p>
@@ -325,13 +361,18 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   return (
     <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
       <CardHeader>
-        <CardTitle className="text-foreground">Conversation Analysis: {topicNameToUse}</CardTitle>
+        <CardTitle className="text-foreground">{displayTitle}</CardTitle> {/* Use simplified title */}
         <CardDescription className="text-muted-foreground">Explore the insights extracted from the conversation. You can edit the summary and notes before saving.</CardDescription>
-         {category && (
+         {/* Display Category Badge if different from Title (e.g., if title is default) */}
+         {category && category !== displayTitle && (
             <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm border-border text-muted-foreground">
                 <Folder className="h-3 w-3" /> {category}
             </Badge>
            )}
+         {/* If title is category, show first key topic as a hint if available */}
+         {category && category === displayTitle && keyTopics && keyTopics.length > 0 && (
+             <p className="text-xs text-muted-foreground mt-1">(Main Topic: {keyTopics[0]})</p>
+         )}
       </CardHeader>
       <CardContent>
         <Tabs defaultValue={defaultTabValue} className="w-full">
@@ -454,7 +495,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                  <div className="bg-primary/10 dark:bg-primary/5 p-4 rounded-md border border-primary/20 dark:border-primary/30">
                    <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground/90"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
                    {/* Ensure concept text is readable */}
-                   <p className="whitespace-pre-wrap text-sm text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p>
+                   <p className="whitespace-pre-wrap text-sm text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p> {/* Changed color */}
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
