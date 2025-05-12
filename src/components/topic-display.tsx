@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { ProcessedConversationResult } from '@/app/actions';
+import type { ProcessedConversationResult, SaveEntryResult } from '@/app/actions';
 import { saveEntryAction } from '@/app/actions';
 import { startTransition } from 'react';
 import {
@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Save, Loader2 } from 'lucide-react';
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Save, Loader2, Archive } from 'lucide-react';
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
@@ -94,73 +94,95 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 export function TopicDisplay({ results }: TopicDisplayProps) {
   const { toast } = useToast();
-  const [isSavingNotes, setIsSavingNotes] = React.useState(false);
-  const [isSavingCode, setIsSavingCode] = React.useState(false);
-  const [isSavingSummary, setIsSavingSummary] = React.useState(false);
+  const [isSavingAll, setIsSavingAll] = React.useState(false);
 
-  const topicsSummary = results.topicsSummary ?? null;
-  const keyTopics = results.keyTopics ?? [];
-  const category = results.category ?? null;
-  const conceptsMap = results.conceptsMap ?? null;
-  const codeAnalysis = results.codeAnalysis ?? null;
-  const studyNotes = results.studyNotes ?? null;
-
+  const { topicsSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
   const defaultTopicName = "Untitled Conversation";
 
-  // Generic save handler
-  const handleSave = async (
-    contentType: 'study-notes' | 'code-snippet' | 'summary',
-    contentToSave: string | null,
-    categoryToSave: string | null, // Add category parameter
-    setLoading: React.Dispatch<React.SetStateAction<boolean>>
-  ) => {
-    if (!contentToSave || contentToSave.trim().length === 0) {
-      toast({ title: "Nothing to Save", description: `The ${contentType.replace('-', ' ')} content is empty.`, variant: "default" });
+  const handleSaveAllInsights = async () => {
+    setIsSavingAll(true);
+    const topicNameToSave = topicsSummary || codeAnalysis?.learnedConcept || defaultTopicName;
+    const categoryToSave = category;
+
+    const tasksToSave: Array<{ type: 'summary' | 'code-snippet' | 'study-notes', content: string }> = [];
+
+    if (topicsSummary && topicsSummary.trim().length > 0) {
+      tasksToSave.push({ type: 'summary', content: topicsSummary });
+    }
+    if (codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0) {
+      tasksToSave.push({ type: 'code-snippet', content: codeAnalysis.finalCodeSnippet });
+    }
+    if (studyNotes && studyNotes.trim().length > 0) {
+      tasksToSave.push({ type: 'study-notes', content: studyNotes });
+    }
+
+    if (tasksToSave.length === 0) {
+      toast({ title: "Nothing to Save", description: "No content available to save." });
+      setIsSavingAll(false);
       return;
     }
 
-    const topicNameToSave = topicsSummary || codeAnalysis?.learnedConcept || defaultTopicName;
-
-    setLoading(true);
-
-    const formData = new FormData();
-    formData.append('topicName', topicNameToSave);
-    formData.append('contentType', contentType);
-    formData.append('content', contentToSave);
-    if (categoryToSave) { // Pass category if it exists
+    const savePromises = tasksToSave.map(task => {
+      const formData = new FormData();
+      formData.append('topicName', topicNameToSave);
+      formData.append('contentType', task.type);
+      formData.append('content', task.content);
+      if (categoryToSave) {
         formData.append('category', categoryToSave);
-    }
+      }
 
-    startTransition(async () => {
-        try {
+      return new Promise<SaveEntryResult>((resolve, reject) => {
+        startTransition(async () => {
+          try {
             const result = await saveEntryAction(null, formData);
             if (result.success) {
-                toast({ title: "Success", description: result.info || `${contentType.replace('-', ' ')} saved.` });
+              resolve(result);
             } else {
-                toast({ title: "Error Saving", description: result.error || `Failed to save ${contentType.replace('-', ' ')}.`, variant: "destructive" });
+              reject(result);
             }
-        } catch (error: any) {
-             toast({
-                title: "Save Error",
-                description: `An unexpected error occurred: ${error.message}`,
-                variant: "destructive",
-             });
-             console.error("Error during save transition:", error);
-        } finally {
-            setLoading(false);
-        }
+          } catch (error: any) {
+            reject({ success: false, error: error.message || `Failed to save ${task.type}.` });
+          }
+        });
+      });
     });
+
+    const settledResults = await Promise.allSettled(savePromises);
+
+    let allSuccessful = true;
+    let errors: string[] = [];
+    let successes: string[] = [];
+
+    settledResults.forEach((result, index) => {
+      const taskType = tasksToSave[index].type.replace('-', ' ');
+      if (result.status === 'fulfilled') {
+        successes.push(taskType);
+      } else {
+        allSuccessful = false;
+        errors.push(result.reason.error || `Failed to save ${taskType}`);
+      }
+    });
+
+    if (allSuccessful) {
+      toast({ title: "All Insights Saved", description: "Summary, code snippet, and study notes saved successfully." });
+    } else {
+      const successMessage = successes.length > 0 ? `Successfully saved: ${successes.join(', ')}. ` : "";
+      const errorMessage = `Failed to save: ${errors.join(', ')}.`;
+      toast({
+        title: "Partial Save",
+        description: `${successMessage}${errorMessage}`,
+        variant: "destructive",
+        duration: 9000,
+      });
+    }
+
+    setIsSavingAll(false);
   };
-
-  const handleSaveNotes = () => handleSave('study-notes', studyNotes, category, setIsSavingNotes);
-  const handleSaveCode = () => handleSave('code-snippet', codeAnalysis?.finalCodeSnippet ?? null, category, setIsSavingCode);
-  const handleSaveSummary = () => handleSave('summary', topicsSummary, category, setIsSavingSummary);
-
 
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  const hasStudyNotesContent = true;
+  const hasStudyNotesContent = true; // Study notes tab is always shown, even if empty initially
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
@@ -168,12 +190,14 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     { value: 'code', label: 'Code Insight', icon: Code, hasContent: hasCodeAnalysisContent },
     { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
   ].filter(tab => tab.hasContent);
-
+  
   const notesExist = studyNotes && studyNotes.trim().length > 0;
-  const codeSnippetExists = codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0;
-  const summaryExists = topicsSummary && topicsSummary.trim().length > 0;
+  const anythingToSave = (topicsSummary && topicsSummary.trim().length > 0) ||
+                         (codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0) ||
+                         (studyNotes && studyNotes.trim().length > 0);
 
-  if (availableTabs.length === 0 && !notesExist) { // Check availableTabs instead of specific content checks
+
+  if (availableTabs.length === 0 && !notesExist) {
     return (
       <Card className="w-full mt-6">
         <CardHeader>
@@ -227,19 +251,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                         <CardContent>
                             <p className="text-foreground dark:text-foreground/90">{topicsSummary}</p>
                         </CardContent>
-                        <CardFooter>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={handleSaveSummary}
-                                disabled={isSavingSummary || !summaryExists}
-                                aria-label="Save Summary"
-                                className="ml-auto"
-                            >
-                                {isSavingSummary ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                {isSavingSummary ? 'Saving...' : 'Save Summary'}
-                            </Button>
-                        </CardFooter>
+                        {/* Individual save button removed */}
                     </Card>
                 )}
               {keyTopics && keyTopics.length > 0 && (
@@ -323,19 +335,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                        </pre>
                      </ScrollArea>
                    </CardContent>
-                    <CardFooter className="p-3 border-t border-muted/50 dark:border-muted/30 bg-muted/20 dark:bg-muted/30">
-                         <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleSaveCode}
-                            disabled={isSavingCode || !codeSnippetExists}
-                            aria-label="Save Code Snippet"
-                            className="ml-auto"
-                        >
-                            {isSavingCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                            {isSavingCode ? 'Saving...' : 'Save Code'}
-                        </Button>
-                    </CardFooter>
+                    {/* Individual save button removed */}
                  </Card>
                )}
                {codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
@@ -369,25 +369,23 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                 <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
                             )}
                         </CardContent>
-                         <CardFooter>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={handleSaveNotes}
-                                disabled={isSavingNotes || !notesExist}
-                                aria-label="Save Study Notes"
-                                className="ml-auto"
-                            >
-                                {isSavingNotes ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                {isSavingNotes ? 'Saving...' : 'Save Notes'}
-                            </Button>
-                        </CardFooter>
+                         {/* Individual save button removed */}
                     </Card>
                 </TabsContent>
             )}
-
         </Tabs>
       </CardContent>
+      <CardFooter className="border-t pt-6">
+        <Button
+            onClick={handleSaveAllInsights}
+            disabled={isSavingAll || !anythingToSave}
+            aria-label="Save All Insights"
+            className="w-full md:w-auto"
+        >
+            {isSavingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+            {isSavingAll ? 'Saving All...' : 'Save All Insights to My Learnings'}
+        </Button>
+      </CardFooter>
     </Card>
   );
 }
