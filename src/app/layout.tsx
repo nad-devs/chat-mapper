@@ -14,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark"> {/* Add dark class here */}
       {/*
        * Use the `GeistSans.variable` to access the CSS variable
        * (--font-geist-sans) and apply it to the body.

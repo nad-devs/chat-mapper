@@ -8,7 +8,7 @@ body {
 
 @layer base {
   :root {
-    --background: 0 0% 100%; /* Light Gray */
+    --background: 0 0% 100%; /* White */
     --foreground: 240 10% 3.9%; /* Dark Gray */
 
     --card: 0 0% 100%; /* White */
@@ -17,14 +17,14 @@ body {
     --popover: 0 0% 100%; /* White */
     --popover-foreground: 240 10% 3.9%; /* Dark Gray */
 
-    --primary: 240 4.8% 95.9%; /* Very Light Gray (almost white) for primary elements background */
-    --primary-foreground: 240 10% 3.9%; /* Dark Gray for text on primary */
+    --primary: 240 5.9% 10%; /* Dark Gray for primary elements background */
+    --primary-foreground: 0 0% 98%; /* White/Very Light Gray for text on primary */
 
-    --secondary: 210 40% 96.1%; /* Soft Blue */
+    --secondary: 240 4.8% 95.9%; /* Very Light Gray (almost white) */
     --secondary-foreground: 240 5.9% 10%; /* Dark Gray for text on secondary */
 
-    --muted: 145 35% 96.1%; /* Soft Green */
-    --muted-foreground: 240 5% 64.9%; /* Medium Gray */
+    --muted: 240 4.8% 95.9%; /* Very Light Gray */
+    --muted-foreground: 240 3.8% 46.1%; /* Medium Gray */
 
     --accent: 180 100% 25%; /* Teal */
     --accent-foreground: 0 0% 98%; /* White/Very Light Gray for text on accent */
@@ -34,7 +34,7 @@ body {
 
     --border: 240 5.9% 90%; /* Light Gray */
     --input: 240 5.9% 90%; /* Light Gray */
-    --ring: 180 100% 25%; /* Teal for focus rings */
+    --ring: 180 100% 30%; /* Teal for focus rings */
 
     --chart-1: 210 40% 50%; /* Soft Blue */
     --chart-2: 145 40% 50%; /* Soft Green */
@@ -44,7 +44,7 @@ body {
 
     --radius: 0.5rem;
 
-    /* Sidebar specific colors (can keep default or adjust slightly) */
+    /* Sidebar specific colors (light mode) */
     --sidebar-background: 240 4.8% 95.9%; /* Very Light Gray */
     --sidebar-foreground: 240 10% 3.9%; /* Dark Gray */
     --sidebar-primary: 180 100% 25%; /* Teal */
@@ -56,33 +56,33 @@ body {
   }
 
   .dark {
-    --background: 240 10% 3.9%; /* Dark Gray */
+    --background: 240 10% 3.9%; /* Very Dark Gray */
     --foreground: 0 0% 98%; /* White/Very Light Gray */
 
-    --card: 240 10% 3.9%; /* Dark Gray */
+    --card: 240 5.9% 10%; /* Dark Gray slightly lighter than background */
     --card-foreground: 0 0% 98%; /* White/Very Light Gray */
 
-    --popover: 240 10% 3.9%; /* Dark Gray */
+    --popover: 240 5.9% 10%; /* Dark Gray */
     --popover-foreground: 0 0% 98%; /* White/Very Light Gray */
 
-    --primary: 240 3.7% 15.9%; /* Slightly lighter Dark Gray */
-    --primary-foreground: 0 0% 98%; /* White/Very Light Gray */
+    --primary: 0 0% 98%; /* White/Very Light Gray for primary elements background */
+    --primary-foreground: 240 5.9% 10%; /* Dark Gray for text on primary */
 
-    --secondary: 210 40% 15%; /* Dark Soft Blue */
+    --secondary: 240 3.7% 15.9%; /* Slightly lighter Dark Gray */
     --secondary-foreground: 0 0% 98%; /* White/Very Light Gray */
 
-    --muted: 145 35% 15%; /* Dark Soft Green */
+    --muted: 240 3.7% 15.9%; /* Slightly lighter Dark Gray */
     --muted-foreground: 240 5% 64.9%; /* Medium Gray */
 
     --accent: 180 100% 35%; /* Brighter Teal for Dark Mode */
     --accent-foreground: 240 10% 3.9%; /* Dark Gray for text on accent */
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%; /* Darker Red */
+    --destructive-foreground: 0 0% 98%; /* White */
 
     --border: 240 3.7% 15.9%; /* Slightly lighter Dark Gray */
     --input: 240 3.7% 15.9%; /* Slightly lighter Dark Gray */
-    --ring: 180 100% 35%; /* Brighter Teal for focus rings */
+    --ring: 180 100% 40%; /* Brighter Teal for focus rings */
 
     --chart-1: 210 40% 60%; /* Lighter Soft Blue */
     --chart-2: 145 40% 60%; /* Lighter Soft Green */
@@ -95,7 +95,7 @@ body {
     --sidebar-foreground: 0 0% 98%; /* White/Very Light Gray */
     --sidebar-primary: 180 100% 35%; /* Brighter Teal */
     --sidebar-primary-foreground: 240 10% 3.9%; /* Dark Gray */
-    --sidebar-accent: 210 40% 18%; /* Darker Soft Blue */
+    --sidebar-accent: 240 3.7% 15.9%; /* Slightly lighter Dark Gray */
     --sidebar-accent-foreground: 0 0% 98%; /* White/Very Light Gray */
     --sidebar-border: 240 3.7% 15.9%; /* Slightly lighter Dark Gray */
     --sidebar-ring: 180 100% 35%; /* Brighter Teal */
