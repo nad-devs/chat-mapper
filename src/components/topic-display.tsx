@@ -53,6 +53,10 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         });
     };
 
+    // Handle H3 (###)
+    if (line.startsWith('### ')) {
+      return <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-primary">{renderBold(line.substring(4))}</h3>;
+    }
     // Handle bullet points (* or -)
     if (line.startsWith('* ') || line.startsWith('- ')) {
       return <li key={index} className="ml-5 list-disc">{renderBold(line.substring(2))}</li>;
@@ -79,6 +83,7 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
    elements.forEach((el, index) => {
      const isListItem = React.isValidElement(el) && el.type === 'li';
+     const isHeading = React.isValidElement(el) && el.type === 'h3';
 
      if (isListItem) {
         const currentListType = el.props.value === undefined ? 'ul' : 'ol';
@@ -101,6 +106,7 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
          currentList = [];
          listType = null;
        }
+       // Don't group headings within lists
        groupedElements.push(el); // Add non-list element
      }
    });
@@ -116,109 +122,9 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   return <div className="text-sm text-foreground dark:text-foreground/90">{groupedElements}</div>;
 };
 
-// Enhanced renderer for Study Notes (handles H3, lists, code)
-const StudyNotesRenderer: React.FC<{ content: string }> = ({ content }) => {
-  const lines = content.split('\n');
-  const elements = lines.map((line, index) => {
-    const trimmedLine = line.trim();
 
-    // Render inline code `` `code` ``
-    const renderInlineCode = (text: string) => {
-        const parts = text.split(/(`[^`]+`)/);
-        return parts.map((part, partIndex) => {
-            if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-            // Added styling for inline code
-            return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono text-foreground">{part.substring(1, part.length - 1)}</code>;
-            }
-            return part;
-        });
-    };
-
-    // Render bold **text**
-    const renderBold = (text: string) => {
-        const parts = text.split(/(\*\*.*?\*\*)/g);
-        return parts.map((part, partIndex) => {
-        if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-            return <strong key={partIndex} className="font-semibold">{renderInlineCode(part.substring(2, part.length - 2))}</strong>;
-        }
-        return renderInlineCode(part);
-        });
-    };
-
-    if (trimmedLine.startsWith('### ')) {
-      return <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-primary">{renderBold(trimmedLine.substring(4))}</h3>; // Use primary color for headings
-    }
-    // Handle bullet points (* or -)
-    if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
-      return <li key={index} className="ml-5 list-disc">{renderBold(trimmedLine.substring(2))}</li>;
-    }
-    // Handle numbered lists (1.)
-    if (/^\d+\.\s/.test(trimmedLine)) {
-         const match = trimmedLine.match(/^(\d+\.\s)(.*)/);
-         if (match) {
-            return <li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>;
-         }
-    }
-    // Handle code blocks ```python ... ```
-    if (trimmedLine.startsWith('```')) {
-       // This is overly simplified, assumes single block. Need state for multi-line blocks.
-       // For now, just render the line itself. A proper parser is needed for full support.
-       // Consider using a markdown library for better code block handling if needed
-       return <pre key={index} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border"><code className="font-mono">{line}</code></pre>;
-    }
-    // Handle empty lines as breaks
-    if (trimmedLine === '') {
-        return <br key={index} />;
-    }
-    // Default paragraph rendering
-    return (
-      <p key={index} className="mb-2 last:mb-0">
-        {renderBold(line)}
-      </p>
-    );
-  });
-
-   // Group list items correctly
-   const groupedElements: React.ReactNode[] = [];
-   let currentList: React.ReactNode[] = [];
-   let listType: 'ul' | 'ol' | null = null;
-
-   elements.forEach((el, index) => {
-     const isListItem = React.isValidElement(el) && el.type === 'li';
-
-     if (isListItem) {
-       const currentListType = el.props.value === undefined ? 'ul' : 'ol';
-       if (listType && listType !== currentListType) {
-         const ListComponent = listType === 'ol' ? 'ol' : 'ul';
-         const listClass = listType === 'ol' ? "list-decimal" : "list-disc"; // Simplified list class
-         groupedElements.push(<ListComponent key={`list-${index}-prev`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
-         currentList = [];
-         listType = null;
-       }
-       if (!listType) {
-         listType = currentListType;
-       }
-       currentList.push(el);
-     } else {
-       if (currentList.length > 0 && listType) {
-         const ListComponent = listType === 'ol' ? 'ol' : 'ul';
-         const listClass = listType === 'ol' ? "list-decimal" : "list-disc"; // Simplified list class
-         groupedElements.push(<ListComponent key={`list-${index}`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
-         currentList = [];
-         listType = null;
-       }
-       groupedElements.push(el);
-     }
-   });
-
-   if (currentList.length > 0 && listType) {
-     const ListComponent = listType === 'ol' ? 'ol' : 'ul';
-     const listClass = listType === 'ol' ? "list-decimal" : "list-disc"; // Simplified list class
-     groupedElements.push(<ListComponent key="list-last" className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
-   }
-   // Apply base styling for readability
-   return <div className="text-sm text-foreground dark:text-foreground/90">{groupedElements}</div>;
-};
+// Enhanced renderer for Study Notes (handles H3, lists, code) - Reusing SimpleMarkdownRenderer as it now handles H3
+const StudyNotesRenderer = SimpleMarkdownRenderer;
 
 
 export function TopicDisplay({ results }: TopicDisplayProps) {
@@ -227,11 +133,11 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
 
-  // Use category as title if available, otherwise a default
-  const displayTitle = category || "Analysis Results";
+  // Determine a simpler title: Use Category if available, otherwise first Key Topic, or fallback
+  const displayTitle = category || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : "Analysis Results");
 
-  // Determine a topic name suitable for saving
-  const topicNameToSave = codeAnalysis?.learnedConcept || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : null) || category || "Untitled Learning";
+  // Determine a topic name suitable for saving (used for the document)
+  const topicNameToSave = codeAnalysis?.learnedConcept || displayTitle || "Untitled Learning";
 
   // State for editing Study Notes
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
@@ -269,7 +175,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
     const formData = new FormData();
     formData.append('topicName', topicNameToSave); // Use the derived topic name
-    if (category) { // Use the original category for saving
+    // Save category if it exists (for potential future filtering/display)
+    if (category) {
       formData.append('category', category);
     }
     if (summaryToSave && summaryToSave.trim().length > 0) {
@@ -362,18 +269,18 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   return (
     <Card className="w-full mt-6 bg-card text-card-foreground border-border shadow-sm">
       <CardHeader>
-        <CardTitle className="text-foreground">{displayTitle}</CardTitle> {/* Use simplified title logic */}
-        <CardDescription className="text-muted-foreground">Explore the insights extracted from the conversation. You can edit the summary and notes before saving.</CardDescription>
-         {/* Display Category Badge if it exists and is different from Title (e.g., if title is default) */}
-         {category && category !== displayTitle && (
-            <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm border-border text-muted-foreground">
+        {/* Simplified Title */}
+        <CardTitle className="text-foreground text-xl">{displayTitle}</CardTitle>
+        {/* Display Category as a Badge if it exists AND differs from the main title */}
+        {category && category !== displayTitle && (
+            <Badge variant="secondary" className="mt-2 w-fit flex items-center gap-1 text-xs">
                 <Folder className="h-3 w-3" /> {category}
             </Badge>
-           )}
-         {/* If title IS category, show first key topic as a hint if available */}
-         {category && category === displayTitle && keyTopics && keyTopics.length > 0 && (
-             <p className="text-xs text-muted-foreground mt-1">(Main Topic: {keyTopics[0]})</p>
-         )}
+        )}
+        {/* Description still useful */}
+        <CardDescription className="text-muted-foreground pt-1">
+            Explore the insights extracted from the conversation. You can edit the summary and notes before saving.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue={defaultTabValue} className="w-full">
@@ -493,9 +400,12 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
            {hasCodeAnalysisContent && codeAnalysis && (
              <TabsContent value="code" className="space-y-4">
                {codeAnalysis.learnedConcept && (
-                 <div className="bg-primary/10 dark:bg-primary/5 p-4 rounded-md border border-primary/20 dark:border-primary/30">
-                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground/90"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
-                   {/* Apply text-foreground to ensure visibility */}
+                 <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
+                   {/* Apply text-foreground to ensure visibility for heading */}
+                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-foreground dark:text-foreground/90">
+                     <BrainCircuit className="h-4 w-4 text-primary"/>Concept Learned / Problem Solved
+                    </h3>
+                   {/* Apply text-foreground to ensure visibility for content */}
                    <p className="whitespace-pre-wrap text-sm text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
@@ -516,13 +426,14 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                    </CardContent>
                  </Card>
                )}
+               {/* Improved spacing and message for missing code */}
                {codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
-                 <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md">
+                 <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md mt-4">
                    No specific code snippet identified for this concept.
                  </div>
                )}
                 {!codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
-                 <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md">
+                 <div className="text-muted-foreground text-sm p-4 border border-dashed border-border/50 rounded-md mt-4">
                    No code concepts or snippets were identified.
                  </div>
                )}
