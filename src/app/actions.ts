@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -12,17 +13,19 @@ import { collection, addDoc, getDocs, query, orderBy, Timestamp } from 'firebase
 
 // --- Data Structures ---
 
-// Structure for storing entries in Firestore
+// Updated structure for storing entries in Firestore as a single document per conversation analysis
 export interface LearningEntry {
   id?: string; // Firestore ID
   topicName: string;
-  type: 'study-notes' | 'code-snippet' | 'summary';
-  content: string;
-  category: string | null; // Added category field
+  summaryContent?: string | null;
+  codeSnippetContent?: string | null;
+  codeLanguage?: string | null;
+  studyNotesContent?: string | null;
+  category: string | null;
   createdAt: Timestamp; // Firestore Timestamp for ordering
-  // Add a simple string version for client-side serialization if needed
-  createdAtISO?: string;
+  createdAtISO?: string; // ISO string for client-side serialization
 }
+
 
 const processConversationInputSchema = z.object({
   conversationText: z.string().min(1, 'Conversation text cannot be empty.'),
@@ -286,14 +289,20 @@ export async function generateQuizTopicsAction(
    }
 }
 
-// --- Action for Saving Individual Entries (Notes, Code, Summary) ---
+// --- Action for Saving a Single Learning Entry (containing all insights) ---
 
 const saveEntryInputSchema = z.object({
   topicName: z.string().min(1, 'Topic name cannot be empty.'),
-  contentType: z.enum(['study-notes', 'code-snippet', 'summary']),
-  content: z.string().min(1, 'Content cannot be empty.'),
-  category: z.string().nullable().optional(), // Added category to schema
-});
+  summaryContent: z.string().optional().nullable(),
+  codeSnippetContent: z.string().optional().nullable(),
+  codeLanguage: z.string().optional().nullable(),
+  studyNotesContent: z.string().optional().nullable(),
+  category: z.string().nullable().optional(),
+}).refine(
+  (data) => !!data.summaryContent || !!data.codeSnippetContent || !!data.studyNotesContent,
+  { message: "At least one piece of content (summary, code, or notes) must be provided to save." }
+);
+
 
 export type SaveEntryResult = {
   success: boolean;
@@ -309,42 +318,54 @@ export async function saveEntryAction(
 
     const validatedFields = saveEntryInputSchema.safeParse({
         topicName: formData.get('topicName'),
-        contentType: formData.get('contentType'),
-        content: formData.get('content'),
-        category: formData.get('category'), // Get category from form data
+        summaryContent: formData.get('summaryContent'),
+        codeSnippetContent: formData.get('codeSnippetContent'),
+        codeLanguage: formData.get('codeLanguage'),
+        studyNotesContent: formData.get('studyNotesContent'),
+        category: formData.get('category'),
     });
 
     if (!validatedFields.success) {
-        const errorMsg = validatedFields.error.flatten().fieldErrors.contentType?.[0] ||
-                         validatedFields.error.flatten().fieldErrors.topicName?.[0] ||
-                         validatedFields.error.flatten().fieldErrors.content?.[0] ||
-                         validatedFields.error.flatten().fieldErrors.category?.[0] ||
-                         'Invalid input for saving entry.';
-        console.error('[Action] Save Entry Validation failed:', errorMsg);
-        return { success: false, error: errorMsg };
+        const errorMessages = validatedFields.error.flatten().fieldErrors;
+        const firstError = Object.values(errorMessages).flat()[0] || 'Invalid input for saving entry.';
+        console.error('[Action] Save Entry Validation failed:', firstError, errorMessages);
+        return { success: false, error: firstError };
     }
 
-    const { topicName, contentType, content, category } = validatedFields.data;
-    const entryType = contentType; // Rename for clarity
+    const {
+        topicName,
+        summaryContent,
+        codeSnippetContent,
+        codeLanguage,
+        studyNotesContent,
+        category
+    } = validatedFields.data;
 
-    console.log(`[Action] Attempting to save entry: Type=${entryType}, Topic=${topicName.substring(0, 50)}, Category=${category ?? 'N/A'}...`);
+    console.log(`[Action] Attempting to save entry: Topic=${topicName.substring(0, 50)}, Category=${category ?? 'N/A'}...`);
 
     try {
-        const docRef = await addDoc(collection(db, "learningEntries"), {
+        const entryToSave: Omit<LearningEntry, 'id' | 'createdAt' | 'createdAtISO'> = {
             topicName: topicName,
-            type: entryType,
-            content: content,
-            category: category ?? null, // Save category (or null if not provided)
+            category: category ?? null,
+        };
+        if (summaryContent) entryToSave.summaryContent = summaryContent;
+        if (codeSnippetContent) entryToSave.codeSnippetContent = codeSnippetContent;
+        if (codeLanguage && codeSnippetContent) entryToSave.codeLanguage = codeLanguage; // Only save language if snippet exists
+        if (studyNotesContent) entryToSave.studyNotesContent = studyNotesContent;
+
+
+        const docRef = await addDoc(collection(db, "learningEntries"), {
+            ...entryToSave,
             createdAt: serverTimestamp()
         });
         console.log("[Action] Document written with ID: ", docRef.id);
-        const successMsg = `${entryType.replace('-', ' ')} saved successfully!`;
+        const successMsg = `Learning insights for '${topicName}' saved successfully!`;
         return { success: true, error: null, info: successMsg };
     } catch (error: any) {
         const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred while saving to Firestore.';
         console.error("[Action] Error saving document to Firestore:", errorMessage);
         if (error.stack) console.error(error.stack);
-        return { success: false, error: `Failed to save ${entryType}: ${errorMessage}` };
+        return { success: false, error: `Failed to save entry: ${errorMessage}` };
     }
 }
 
@@ -370,9 +391,11 @@ export async function getLearningEntriesAction(): Promise<GetLearningEntriesResu
             entries.push({
                 id: doc.id,
                 topicName: data.topicName,
-                type: data.type,
-                content: data.content,
-                category: data.category ?? null, // Fetch category, default to null if missing
+                summaryContent: data.summaryContent ?? null,
+                codeSnippetContent: data.codeSnippetContent ?? null,
+                codeLanguage: data.codeLanguage ?? null,
+                studyNotesContent: data.studyNotesContent ?? null,
+                category: data.category ?? null,
                 createdAt: createdAt, // Keep original Timestamp for potential server-side use
                 createdAtISO: createdAt.toDate().toISOString(), // Add ISO string for client
             });
@@ -390,3 +413,5 @@ export async function getLearningEntriesAction(): Promise<GetLearningEntriesResu
         return JSON.parse(JSON.stringify({ entries: null, error: `Failed to fetch learning entries: ${errorMessage}` }));
     }
 }
+
+    

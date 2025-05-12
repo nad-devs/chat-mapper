@@ -1,7 +1,8 @@
+
 import * as React from 'react';
 import type { ProcessedConversationResult, SaveEntryResult } from '@/app/actions';
 import { saveEntryAction } from '@/app/actions';
-import { startTransition } from 'react';
+import { startTransition, useActionState } from 'react';
 import {
   Card,
   CardContent,
@@ -15,13 +16,13 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Save, Loader2, Archive } from 'lucide-react';
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2 } from 'lucide-react';
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
 }
 
-// Simple Markdown-like renderer (copied from learnings page for consistency)
+// Simple Markdown-like renderer
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
@@ -47,10 +48,10 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         });
     };
 
-    if (line.startsWith('### ')) { // H3
+    if (line.startsWith('### ')) {
       return <h3 key={index} className="text-xl font-semibold mt-4 mb-2">{renderBold(line.substring(4))}</h3>;
     }
-     if (line.startsWith('## ')) { // H2
+     if (line.startsWith('## ')) {
       return <h2 key={index} className="text-2xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
     }
     if (line.startsWith('* ') || line.startsWith('- ')) {
@@ -94,95 +95,59 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 export function TopicDisplay({ results }: TopicDisplayProps) {
   const { toast } = useToast();
-  const [isSavingAll, setIsSavingAll] = React.useState(false);
+  const [saveState, saveFormAction, isSaving] = useActionState(saveEntryAction, null);
 
   const { topicsSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
   const defaultTopicName = "Untitled Conversation";
 
-  const handleSaveAllInsights = async () => {
-    setIsSavingAll(true);
+  React.useEffect(() => {
+    if (saveState) {
+      if (saveState.success && saveState.info) {
+        toast({ title: "Success", description: saveState.info });
+      } else if (saveState.error) {
+        toast({ title: "Error Saving", description: saveState.error, variant: "destructive" });
+      }
+    }
+  }, [saveState, toast]);
+
+
+  const handleSaveAllInsights = () => {
     const topicNameToSave = topicsSummary || codeAnalysis?.learnedConcept || defaultTopicName;
     const categoryToSave = category;
 
-    const tasksToSave: Array<{ type: 'summary' | 'code-snippet' | 'study-notes', content: string }> = [];
-
+    const formData = new FormData();
+    formData.append('topicName', topicNameToSave);
+    if (categoryToSave) {
+      formData.append('category', categoryToSave);
+    }
     if (topicsSummary && topicsSummary.trim().length > 0) {
-      tasksToSave.push({ type: 'summary', content: topicsSummary });
+      formData.append('summaryContent', topicsSummary);
     }
     if (codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0) {
-      tasksToSave.push({ type: 'code-snippet', content: codeAnalysis.finalCodeSnippet });
+      formData.append('codeSnippetContent', codeAnalysis.finalCodeSnippet);
+      if (codeAnalysis.codeLanguage) {
+        formData.append('codeLanguage', codeAnalysis.codeLanguage);
+      }
     }
     if (studyNotes && studyNotes.trim().length > 0) {
-      tasksToSave.push({ type: 'study-notes', content: studyNotes });
+      formData.append('studyNotesContent', studyNotes);
     }
 
-    if (tasksToSave.length === 0) {
-      toast({ title: "Nothing to Save", description: "No content available to save." });
-      setIsSavingAll(false);
-      return;
+    // Check if there's anything to save
+    if (!formData.has('summaryContent') && !formData.has('codeSnippetContent') && !formData.has('studyNotesContent')) {
+        toast({ title: "Nothing to Save", description: "No content available to save from this analysis." });
+        return;
     }
 
-    const savePromises = tasksToSave.map(task => {
-      const formData = new FormData();
-      formData.append('topicName', topicNameToSave);
-      formData.append('contentType', task.type);
-      formData.append('content', task.content);
-      if (categoryToSave) {
-        formData.append('category', categoryToSave);
-      }
-
-      return new Promise<SaveEntryResult>((resolve, reject) => {
-        startTransition(async () => {
-          try {
-            const result = await saveEntryAction(null, formData);
-            if (result.success) {
-              resolve(result);
-            } else {
-              reject(result);
-            }
-          } catch (error: any) {
-            reject({ success: false, error: error.message || `Failed to save ${task.type}.` });
-          }
-        });
-      });
+    startTransition(() => {
+        saveFormAction(formData);
     });
-
-    const settledResults = await Promise.allSettled(savePromises);
-
-    let allSuccessful = true;
-    let errors: string[] = [];
-    let successes: string[] = [];
-
-    settledResults.forEach((result, index) => {
-      const taskType = tasksToSave[index].type.replace('-', ' ');
-      if (result.status === 'fulfilled') {
-        successes.push(taskType);
-      } else {
-        allSuccessful = false;
-        errors.push(result.reason.error || `Failed to save ${taskType}`);
-      }
-    });
-
-    if (allSuccessful) {
-      toast({ title: "All Insights Saved", description: "Summary, code snippet, and study notes saved successfully." });
-    } else {
-      const successMessage = successes.length > 0 ? `Successfully saved: ${successes.join(', ')}. ` : "";
-      const errorMessage = `Failed to save: ${errors.join(', ')}.`;
-      toast({
-        title: "Partial Save",
-        description: `${successMessage}${errorMessage}`,
-        variant: "destructive",
-        duration: 9000,
-      });
-    }
-
-    setIsSavingAll(false);
   };
 
   const hasOverviewContent = !!topicsSummary || (keyTopics && keyTopics.length > 0);
   const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
   const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet);
-  const hasStudyNotesContent = true; // Study notes tab is always shown, even if empty initially
+  const hasStudyNotesContent = true; // Study notes tab is always shown
 
   const availableTabs = [
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
@@ -251,7 +216,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                         <CardContent>
                             <p className="text-foreground dark:text-foreground/90">{topicsSummary}</p>
                         </CardContent>
-                        {/* Individual save button removed */}
                     </Card>
                 )}
               {keyTopics && keyTopics.length > 0 && (
@@ -313,9 +277,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
            {hasCodeAnalysisContent && codeAnalysis && (
              <TabsContent value="code" className="space-y-4">
                {codeAnalysis.learnedConcept && (
-                 <div className="bg-primary/10 dark:bg-primary/20 p-4 rounded-md border border-primary/20 dark:border-primary/50">
-                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
-                   <p className="whitespace-pre-wrap text-foreground dark:text-foreground/90">{codeAnalysis.learnedConcept}</p>
+                 <div className="bg-primary/10 dark:bg-primary/5 p-4 rounded-md border border-primary/20 dark:border-primary/30">
+                   <h3 className="text-md font-semibold mb-2 flex items-center gap-2 text-primary dark:text-primary-foreground/90"><BrainCircuit className="h-4 w-4"/>Concept Learned / Problem Solved</h3>
+                   <p className="whitespace-pre-wrap text-foreground dark:text-foreground/80">{codeAnalysis.learnedConcept}</p>
                  </div>
                )}
                {codeAnalysis.finalCodeSnippet && (
@@ -335,7 +299,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                        </pre>
                      </ScrollArea>
                    </CardContent>
-                    {/* Individual save button removed */}
                  </Card>
                )}
                {codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
@@ -369,7 +332,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                 <p className="text-muted-foreground text-sm italic">No study notes were generated for this conversation.</p>
                             )}
                         </CardContent>
-                         {/* Individual save button removed */}
                     </Card>
                 </TabsContent>
             )}
@@ -378,14 +340,16 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
       <CardFooter className="border-t pt-6">
         <Button
             onClick={handleSaveAllInsights}
-            disabled={isSavingAll || !anythingToSave}
+            disabled={isSaving || !anythingToSave}
             aria-label="Save All Insights"
             className="w-full md:w-auto"
         >
-            {isSavingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
-            {isSavingAll ? 'Saving All...' : 'Save All Insights to My Learnings'}
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+            {isSaving ? 'Saving All...' : 'Save All Insights to My Learnings'}
         </Button>
       </CardFooter>
     </Card>
   );
 }
+
+    

@@ -1,21 +1,22 @@
+
 'use client';
 
 import * as React from 'react';
 import { getLearningEntriesAction, type LearningEntry, type GetLearningEntriesResult } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'; // Import Accordion
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Calendar as CalendarIconLucide, AlertTriangle, ArrowLeft, FileText, Code, Edit3, Inbox, CalendarDays, Folder } from 'lucide-react'; // Inbox for empty state, CalendarDays, Folder
+import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive } from 'lucide-react';
 import Link from 'next/link';
-import { format, isSameDay } from 'date-fns'; // For formatting dates and comparing days
-import { Calendar } from '@/components/ui/calendar'; // ShadCN Calendar
+import { format, isSameDay } from 'date-fns';
+import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
-// Simple Markdown-like renderer (copied from topic-display for consistency)
+// Simple Markdown-like renderer
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
@@ -41,10 +42,10 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         });
     };
 
-    if (line.startsWith('### ')) { // Adjusted to H3 as in topic-display
+    if (line.startsWith('### ')) {
       return <h3 key={index} className="text-xl font-semibold mt-4 mb-2">{renderBold(line.substring(4))}</h3>;
     }
-     if (line.startsWith('## ')) { // H2
+     if (line.startsWith('## ')) {
       return <h2 key={index} className="text-2xl font-semibold mt-6 mb-3 border-b pb-1">{renderBold(line.substring(3))}</h2>;
     }
     if (line.startsWith('* ') || line.startsWith('- ')) {
@@ -103,7 +104,6 @@ export default function LearningsPage() {
           setError(result.error);
           setAllLearnings(null);
         } else {
-          // Sort all learnings initially by date, newest first
           const sortedLearnings = result.entries?.sort((a, b) => new Date(b.createdAtISO!).getTime() - new Date(a.createdAtISO!).getTime()) ?? [];
           setAllLearnings(sortedLearnings);
         }
@@ -119,66 +119,36 @@ export default function LearningsPage() {
 
   React.useEffect(() => {
     if (allLearnings) {
-      // 1. Filter by date if selected
       const dateFilteredLearnings = selectedDate
         ? allLearnings.filter(entry => {
             if (!entry.createdAtISO) return false;
             return isSameDay(new Date(entry.createdAtISO), selectedDate);
           })
-        : allLearnings; // If no date selected, use all learnings
+        : allLearnings;
 
-      // 2. Group the filtered learnings by category
       const grouped = dateFilteredLearnings.reduce((acc: GroupedLearnings, entry) => {
-        const category = entry.category || 'Uncategorized'; // Default to 'Uncategorized'
+        const category = entry.category || 'Uncategorized';
         if (!acc[category]) {
           acc[category] = [];
         }
-        acc[category].push(entry); // Already sorted by date
+        acc[category].push(entry);
         return acc;
       }, {});
 
       setGroupedLearnings(grouped);
-      // Automatically open all accordion items when data changes
       setActiveAccordionItems(Object.keys(grouped));
 
     } else {
-      setGroupedLearnings({}); // Clear if no allLearnings
+      setGroupedLearnings({});
        setActiveAccordionItems([]);
     }
   }, [selectedDate, allLearnings]);
 
 
-  const getEntryIcon = (type: LearningEntry['type']) => {
-    switch (type) {
-      case 'study-notes':
-        return <Edit3 className="h-4 w-4 text-blue-500" />;
-      case 'code-snippet':
-        return <Code className="h-4 w-4 text-green-500" />;
-      case 'summary':
-        return <FileText className="h-4 w-4 text-purple-500" />;
-      default:
-        return <FileText className="h-4 w-4" />;
-    }
-  };
-
-  const getEntryTitle = (type: LearningEntry['type']) => {
-    switch (type) {
-      case 'study-notes':
-        return "Study Notes";
-      case 'code-snippet':
-        return "Code Snippet";
-      case 'summary':
-        return "Conversation Summary";
-      default:
-        return "Entry";
-    }
-  };
-
-
   if (isLoading) {
     return (
       <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-gradient-to-br from-background to-secondary/10 dark:from-zinc-900 dark:to-zinc-800/50">
-        <div className="w-full max-w-6xl space-y-8"> {/* Increased max-width */}
+        <div className="w-full max-w-6xl space-y-8">
           <header className="text-center mb-8">
             <Skeleton className="h-10 w-1/2 mx-auto mb-2" />
             <Skeleton className="h-5 w-3/4 mx-auto" />
@@ -188,9 +158,9 @@ export default function LearningsPage() {
               <Skeleton className="h-[300px] w-full" />
             </div>
             <div className="flex-1 space-y-4">
-              <Skeleton className="h-10 w-full" /> {/* For accordion header */}
+              <Skeleton className="h-10 w-full" />
               <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-10 w-full" /> {/* For accordion header */}
+              <Skeleton className="h-10 w-full" />
               <Skeleton className="h-20 w-full" />
             </div>
           </div>
@@ -251,7 +221,7 @@ export default function LearningsPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-gradient-to-br from-background to-secondary/10 dark:from-zinc-900 dark:to-zinc-800/50">
-      <div className="w-full max-w-6xl space-y-8"> {/* Increased max-width */}
+      <div className="w-full max-w-6xl space-y-8">
         <header className="text-center mb-8 relative">
             <Link href="/" passHref className="absolute left-0 top-1/2 -translate-y-1/2">
                 <Button variant="outline" size="icon" aria-label="Back to Home">
@@ -263,7 +233,6 @@ export default function LearningsPage() {
         </header>
 
         <div className="flex flex-col md:flex-row gap-8">
-          {/* Calendar Section */}
           <div className="md:w-auto md:min-w-[280px] lg:min-w-[320px] flex justify-center md:justify-start">
             <Card className="p-0">
               <Calendar
@@ -284,20 +253,19 @@ export default function LearningsPage() {
             </Card>
           </div>
 
-          {/* Learnings Display Section */}
           <div className="flex-1">
              <h2 className="text-2xl font-semibold mb-4 text-foreground">
               {selectedDate ? `Entries for ${format(selectedDate, "MMMM d, yyyy")}` : "All Entries"} by Category
             </h2>
             {Object.keys(groupedLearnings).length > 0 ? (
                  <Accordion
-                    type="multiple" // Allow multiple items open
-                    value={activeAccordionItems} // Control open items
-                    onValueChange={setActiveAccordionItems} // Update state on change
+                    type="multiple"
+                    value={activeAccordionItems}
+                    onValueChange={setActiveAccordionItems}
                     className="w-full space-y-2"
                 >
                 {Object.entries(groupedLearnings)
-                  .sort(([categoryA], [categoryB]) => categoryA.localeCompare(categoryB)) // Sort categories alphabetically
+                  .sort(([categoryA], [categoryB]) => categoryA.localeCompare(categoryB))
                   .map(([category, entries]) => (
                   <AccordionItem value={category} key={category} className="border bg-card rounded-lg shadow-sm overflow-hidden">
                     <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/30 text-lg font-medium">
@@ -307,31 +275,49 @@ export default function LearningsPage() {
                        </div>
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pb-4 pt-0">
-                        <ScrollArea className="h-[500px] pr-3 -mr-3"> {/* Adjust height as needed */}
+                        <ScrollArea className="h-[500px] pr-3 -mr-3">
                              <div className="space-y-4 pt-2">
                                 {entries.map((entry) => (
                                     <Card key={entry.id} className="overflow-hidden shadow-sm bg-background/50 dark:bg-background/20 border border-border/50">
                                         <CardHeader className="bg-muted/30 dark:bg-muted/10 p-3 border-b border-border/50">
                                             <CardTitle className="text-base flex items-center gap-2">
-                                            {getEntryIcon(entry.type)}
-                                            {entry.topicName || getEntryTitle(entry.type)}
+                                                <Archive className="h-4 w-4 text-primary" /> {/* Generic icon for combined entry */}
+                                                {entry.topicName}
                                             </CardTitle>
                                             {entry.createdAtISO && (
                                             <CardDescription className="text-xs pt-1">
                                                 Saved at: {format(new Date(entry.createdAtISO), "h:mm a")}
-                                                {!selectedDate && ` on ${format(new Date(entry.createdAtISO), "MMM d, yyyy")}`} {/* Show date if not filtering */}
+                                                {!selectedDate && ` on ${format(new Date(entry.createdAtISO), "MMM d, yyyy")}`}
                                             </CardDescription>
                                             )}
                                         </CardHeader>
-                                        <CardContent className="p-3">
-                                            {entry.type === 'code-snippet' ? (
-                                                <ScrollArea className="max-h-[300px] w-full">
-                                                    <pre className="p-3 text-xs bg-background/50 dark:bg-muted/20 text-foreground whitespace-pre-wrap break-words rounded-md border">
-                                                        <code>{entry.content}</code>
-                                                    </pre>
-                                                </ScrollArea>
-                                            ) : (
-                                                <SimpleMarkdownRenderer content={entry.content} />
+                                        <CardContent className="p-3 space-y-3">
+                                            {entry.summaryContent && (
+                                                <div>
+                                                    <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-secondary-foreground"><FileText className="h-4 w-4" /> Summary</h4>
+                                                    <p className="text-sm text-foreground/90 bg-secondary/30 dark:bg-secondary/10 p-2 rounded-md border border-secondary/50 dark:border-secondary/20">{entry.summaryContent}</p>
+                                                </div>
+                                            )}
+                                            {entry.studyNotesContent && (
+                                                <div>
+                                                    <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-secondary-foreground"><Lightbulb className="h-4 w-4" /> Study Notes</h4>
+                                                    <div className="bg-secondary/30 dark:bg-secondary/10 p-2 rounded-md border border-secondary/50 dark:border-secondary/20">
+                                                      <SimpleMarkdownRenderer content={entry.studyNotesContent} />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {entry.codeSnippetContent && (
+                                                <div>
+                                                    <h4 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-secondary-foreground">
+                                                        <Code className="h-4 w-4" /> Code Snippet
+                                                        {entry.codeLanguage && <Badge variant="outline" size="sm" className="ml-auto text-xs">{entry.codeLanguage}</Badge>}
+                                                    </h4>
+                                                    <ScrollArea className="max-h-[300px] w-full">
+                                                        <pre className="p-3 text-xs bg-background/50 dark:bg-muted/20 text-foreground whitespace-pre-wrap break-words rounded-md border">
+                                                            <code>{entry.codeSnippetContent}</code>
+                                                        </pre>
+                                                    </ScrollArea>
+                                                </div>
                                             )}
                                         </CardContent>
                                     </Card>
@@ -361,3 +347,5 @@ export default function LearningsPage() {
     </main>
   );
 }
+
+    
