@@ -10,13 +10,15 @@ import { db } from '@/lib/firebase'; // Import Firestore db instance
 import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore'; // Import Firestore functions
 
 // --- Firestore Data Structure ---
-type LearningEntryType = "summary" | "study-notes" | "code-analysis"; // Define possible types
+// Simplifying the types slightly, as we primarily save notes now.
+// The content type can still be flexible if needed later.
+type LearningEntryType = "study-notes" | "summary" | "code-analysis"; // Retain types, but only use 'study-notes' initially
 
 // Input type for saving (timestamp is added by Firestore)
 interface LearningEntryInput {
-  topicName: string; // Derived from category or summary
+  topicName: string; // Derived from category or summary or a default
   type: LearningEntryType;
-  content: string | SummarizeTopicsOutput | AnalyzeCodeOutput; // Flexible content based on type
+  content: string | AnalyzeCodeOutput | SummarizeTopicsOutput; // Flexible content based on type
 }
 
 // Type representing a saved document in Firestore (includes ID and Timestamp)
@@ -25,13 +27,15 @@ export interface LearningEntry extends LearningEntryInput {
     timestamp: Timestamp;
 }
 
-// --- Server Action to Save Entry ---
+// --- Server Action to Save Entry (remains the same, used by initial save and update) ---
 async function saveLearningEntry(entryData: LearningEntryInput): Promise<string | null> {
     try {
         console.log(`[Action/DB] Attempting to save learning entry of type: ${entryData.type} for topic: ${entryData.topicName}`);
         // Basic validation before saving
         if (!entryData.topicName || typeof entryData.topicName !== 'string' || entryData.topicName.trim() === '') {
-            throw new Error("Invalid topicName provided for saving.");
+            // Assign a default topic name if it's invalid/missing
+            console.warn("[Action/DB] Invalid or missing topicName provided for saving. Using 'Untitled Analysis'.");
+            entryData.topicName = 'Untitled Analysis';
         }
          if (!entryData.type || typeof entryData.type !== 'string') {
             throw new Error("Invalid type provided for saving.");
@@ -39,6 +43,11 @@ async function saveLearningEntry(entryData: LearningEntryInput): Promise<string 
         if (entryData.content === undefined || entryData.content === null) {
              throw new Error("Invalid content provided for saving (null or undefined).");
         }
+         // Additional check for empty string content (specifically for notes)
+         if (entryData.type === "study-notes" && typeof entryData.content === 'string' && entryData.content.trim() === '') {
+            console.log(`[Action/DB] Skipping save for empty study notes for topic: ${entryData.topicName}`);
+            return "skipped_empty"; // Indicate skipped save due to empty content
+         }
 
         const docRef = await addDoc(collection(db, "learningEntries"), {
             ...entryData,
@@ -62,8 +71,7 @@ const processConversationInputSchema = z.object({
 });
 
 // This result type is what the *action* returns to the *UI*.
-// It no longer needs Firestore-specific fields like id/timestamp.
-// The error field can now also indicate DB saving errors.
+// It includes all generated data, regardless of whether it was saved.
 export type ProcessedConversationResult = {
   originalConversationText?: string;
   topicsSummary: string | null; // Allow null if summarization fails
@@ -84,8 +92,8 @@ export async function processConversation(
 
    // Define a default error state structure more defensively
   const defaultErrorState = (message: string, conversationText: string | undefined): ProcessedConversationResult => ({
-    topicsSummary: null, // Default to null on error
-    keyTopics: null, // Default to null
+    topicsSummary: null,
+    keyTopics: null,
     category: null,
     conceptsMap: null,
     codeAnalysis: null,
@@ -104,11 +112,9 @@ export async function processConversation(
     if (!validatedFields.success) {
       const errorMsg = validatedFields.error.flatten().fieldErrors.conversationText?.[0] || 'Invalid input.';
       console.error('[Action] Validation failed:', errorMsg);
-      // Pass potentially empty string if validation failed early
       return defaultErrorState(errorMsg, conversationText);
     }
 
-    // Reassign conversationText from validated data to be safe
     conversationText = validatedFields.data.conversationText;
     console.log('[Action] Validation successful. Conversation text length:', conversationText.length);
 
@@ -120,7 +126,6 @@ export async function processConversation(
     let saveError: string | null = null; // Track DB save errors separately
 
     console.log('[Action] Starting AI flows...');
-    // Wrap AI calls in try-catch just in case Promise.allSettled itself fails or setup fails
     let settledResults: PromiseSettledResult<any>[] = [];
     try {
         settledResults = await Promise.allSettled([
@@ -132,50 +137,41 @@ export async function processConversation(
          const errorMsg = `Failed to initiate AI processing: ${aiError.message}`;
          console.error('[Action] Error during Promise.allSettled for AI flows:', aiError);
          console.error(aiError.stack);
-         // Return default error state immediately if AI setup fails
          return defaultErrorState(errorMsg, conversationText);
     }
 
     console.log('[Action] AI flows results settled.');
 
-     // --- Helper function to extract result or null, logging errors ---
     const getResultOrNull = <T>(settledResult: PromiseSettledResult<T | null>, flowName: string): T | null => {
         if (settledResult.status === 'fulfilled') {
             console.log(`[Action] ${flowName} flow fulfilled successfully.`);
-            // Return the value, even if it's null (as intended by some flows)
             return settledResult.value;
         } else {
-            // Log the reason for rejection and set processingError
             const reason = settledResult.reason instanceof Error ? settledResult.reason.message : String(settledResult.reason);
             console.error(`[Action] Error in ${flowName} flow:`, reason);
             if (settledResult.reason instanceof Error && settledResult.reason.stack) {
                 console.error(settledResult.reason.stack);
             }
-            // Set the first processing error encountered
             if (!processingError) {
                 processingError = `Error during ${flowName}: ${reason}`;
             }
-            return null; // Return null for this specific result
+            return null;
         }
     };
 
-    // --- Process Results ---
     summaryData = getResultOrNull(settledResults[0], 'Summarize Topics');
     codeAnalysisData = getResultOrNull(settledResults[1], 'Analyze Code');
     studyNotesData = getResultOrNull(settledResults[2], 'Generate Study Notes');
 
-    // --- Check if ANY critical AI flow failed ---
     if (processingError) {
         console.warn(`[Action] Proceeding with partial results due to AI error: ${processingError}`);
-        // We will still try to map concepts and save what we have, but the error will be reported.
     }
 
-    // Extract data even if null
     const topicsSummary = summaryData?.summary ?? null;
     const keyTopics = summaryData?.keyTopics ?? null;
     const category = summaryData?.category ?? null;
-    const codeAnalysis = codeAnalysisData; // Keep as potentially null object
-    const studyNotes = studyNotesData?.studyNotes ?? null; // Extract string or null
+    const codeAnalysis = codeAnalysisData;
+    const studyNotes = studyNotesData?.studyNotes ?? null;
 
     console.log('[Action] AI results processed (some may be null due to errors).');
     console.log(`[Action] Summary: ${topicsSummary ? topicsSummary.substring(0, 50) + '...' : 'null'}`);
@@ -184,12 +180,10 @@ export async function processConversation(
     console.log(`[Action] Code Analysis Concept: ${codeAnalysis?.learnedConcept ?? 'null'}`);
     console.log(`[Action] Study Notes: ${studyNotes ? studyNotes.substring(0, 50) + '...' : 'null'}`);
 
-
-    // --- Concept Mapping (Optional based on summary) ---
     if (topicsSummary && topicsSummary.trim().length > 0) {
          console.log('[Action] Starting Concept Mapping...');
          const mapInput: MapConceptsInput = {
-             mainTopic: topicsSummary, // Use summary as main topic for mapping
+             mainTopic: topicsSummary,
              conversationText: conversationText,
          };
          try {
@@ -201,8 +195,7 @@ export async function processConversation(
              if (mapError instanceof Error && mapError.stack) {
                  console.error(mapError.stack);
              }
-             conceptsMap = null; // Set to null on error
-             // Add this error to processing errors if none existed before
+             conceptsMap = null;
              if (!processingError) {
                 processingError = `Error during Concept Mapping: ${reason}`;
              }
@@ -212,20 +205,9 @@ export async function processConversation(
          conceptsMap = null;
      }
 
-    // --- Save Results to Firestore ---
-    // Determine topicName, ensure it's valid even if summary/category are null/empty
+    // --- Save ONLY Study Notes to Firestore ---
     const topicName = category || (topicsSummary && topicsSummary.trim().length > 0 ? topicsSummary.substring(0, 50) : null) || "Untitled Analysis";
-    console.log(`[Action] Determined topic name for saving: ${topicName}`);
-
-    const savePromises: Promise<string | null>[] = [];
-
-    // Prepare data for saving summary - only if content exists
-    const summaryEntryData: LearningEntryInput | null = (topicsSummary || (keyTopics && keyTopics.length > 0)) ? {
-        topicName: topicName,
-        type: "summary",
-        // Ensure content matches schema, provide defaults if parts are null
-        content: { summary: topicsSummary || "", keyTopics: keyTopics || [], category: category ?? null }
-    } : null;
+    console.log(`[Action] Determined topic name for saving notes: ${topicName}`);
 
     // Prepare data for saving study notes - only if content exists
     const notesEntryData: LearningEntryInput | null = (studyNotes && studyNotes.trim().length > 0) ? {
@@ -234,57 +216,24 @@ export async function processConversation(
         content: studyNotes // Store the notes string
     } : null;
 
-     // Prepare data for saving code analysis - only if content exists
-    const codeEntryData: LearningEntryInput | null = (codeAnalysis && (codeAnalysis.learnedConcept || codeAnalysis.finalCodeSnippet)) ? {
-        topicName: topicName,
-        type: "code-analysis",
-        content: codeAnalysis // Store the whole code analysis object
-    } : null;
-
-    // Add save promises only if data exists
-    if (summaryEntryData) savePromises.push(saveLearningEntry(summaryEntryData));
-    if (notesEntryData) savePromises.push(saveLearningEntry(notesEntryData));
-    if (codeEntryData) savePromises.push(saveLearningEntry(codeEntryData));
-
-     // Wait for all save operations to complete
-    if (savePromises.length > 0) {
-        console.log(`[Action] Attempting to save ${savePromises.length} entries to Firestore for topic "${topicName}"...`);
-        try {
-            const saveResults = await Promise.allSettled(savePromises);
-            let failedSaves = 0;
-            saveResults.forEach((result, index) => {
-                 const entryType = [summaryEntryData?.type, notesEntryData?.type, codeEntryData?.type].filter(Boolean)[index] ?? 'unknown';
-                 if (result.status === 'rejected') {
-                     failedSaves++;
-                     const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
-                     console.error(`[Action/DB] Failed to save learning entry type '${entryType}'. Reason:`, reason);
-                     if (result.reason instanceof Error && result.reason.stack) console.error(result.reason.stack);
-                 } else if (result.status === 'fulfilled' && result.value === null) {
-                     // Error logged within saveLearningEntry, count as failed
-                     failedSaves++;
-                     console.error(`[Action/DB] Firestore save failed internally for entry type '${entryType}'. Check previous logs.`);
-                 } else if (result.status === 'fulfilled' && result.value !== null) {
-                     console.log(`[Action/DB] Successfully saved learning entry type '${entryType}' (ID: ${result.value})`);
-                 }
-            });
-
-            if (failedSaves > 0) {
-                 saveError = `Failed to save ${failedSaves} learning entr${failedSaves > 1 ? 'ies' : 'y'} to the database. Check server logs for details. Firestore permissions or configuration might be incorrect.`;
-                 console.error(`[Action/DB] ${saveError}`);
-            } else {
-                 console.log(`[Action/DB] All ${savePromises.length} entries saved successfully.`);
-            }
-
-        } catch (saveAllError: any) {
-             const reason = saveAllError instanceof Error ? saveAllError.message : String(saveAllError);
-             console.error('[Action/DB] Error during Promise.allSettled for saving entries:', reason);
-             if (saveAllError instanceof Error && saveAllError.stack) console.error(saveAllError.stack);
-             saveError = `Encountered an error while attempting to save entries: ${reason}`;
+    // Attempt to save only if notesEntryData is not null
+    if (notesEntryData) {
+        console.log(`[Action] Attempting to save study notes to Firestore for topic "${topicName}"...`);
+        const savedId = await saveLearningEntry(notesEntryData);
+        if (savedId === null) {
+            // Error occurred during save
+            saveError = `Failed to save study notes for topic "${topicName}" to the database. Check server logs for details. Firestore permissions or configuration might be incorrect.`;
+            console.error(`[Action/DB] ${saveError}`);
+        } else if (savedId === "skipped_empty") {
+            console.log(`[Action/DB] Skipped saving empty study notes for topic "${topicName}".`);
+            // Optionally set a different kind of message or no error
+            // saveError = "Study notes were generated but were empty, so not saved.";
+        } else {
+             console.log(`[Action/DB] Successfully saved study notes (ID: ${savedId}) for topic "${topicName}".`);
         }
     } else {
-        console.log("[Action] No entries generated with content to save to Firestore.");
+        console.log("[Action] No study notes generated with content to save to Firestore initially.");
     }
-
 
     // --- Prepare final result for UI ---
     // Combine processing and save errors. Prioritize processing error if both exist.
@@ -306,7 +255,8 @@ export async function processConversation(
         console.error(`[Action] Final error state being returned: ${finalError}`);
     }
     // Ensure the returned object structure is always consistent and serializable
-    return JSON.parse(JSON.stringify(analysisResult)); // Basic serialization check
+    // Using JSON parse/stringify is a simple way to handle potential non-serializable values (like Timestamps if they were included)
+    return JSON.parse(JSON.stringify(analysisResult));
 
   } catch (error: any) {
     // Catch any unexpected errors during the entire process
@@ -383,10 +333,10 @@ export async function generateQuizTopicsAction(
    }
 }
 
- // --- Action to Save Updated Study Notes ---
+ // --- Action to Save Updated Study Notes (Remains the same) ---
 const saveNotesInputSchema = z.object({
     topicName: z.string().min(1, 'Topic name is required.'),
-    studyNotes: z.string(), // Allow empty notes
+    studyNotes: z.string(), // Allow empty notes (though saveLearningEntry might skip)
 });
 
 export async function saveUpdatedNotesAction(
@@ -418,12 +368,20 @@ export async function saveUpdatedNotesAction(
 
     const savedId = await saveLearningEntry(notesEntryData);
 
-    if (savedId) {
-        console.log(`[Action/SaveNotes] Successfully saved updated notes for topic "${topicName}" (ID: ${savedId})`);
-        return { success: true, error: null };
-    } else {
+    if (savedId === null) {
+        // Error occurred during save
         const errorMsg = `Failed to save updated notes for topic "${topicName}" to the database.`;
         console.error(`[Action/SaveNotes] ${errorMsg}`);
         return { success: false, error: errorMsg };
+    } else if (savedId === "skipped_empty") {
+         // Saved skipped because notes were empty
+         console.log(`[Action/SaveNotes] Skipped saving empty notes for topic "${topicName}".`);
+         // Return success, maybe with an info message if desired?
+         // For now, just return success as no *error* occurred.
+         return { success: true, error: null }; // Or add an info field: { success: true, info: "Notes were empty, nothing saved."}
+    } else {
+        // Save successful
+        console.log(`[Action/SaveNotes] Successfully saved updated notes for topic "${topicName}" (ID: ${savedId})`);
+        return { success: true, error: null };
     }
 }
