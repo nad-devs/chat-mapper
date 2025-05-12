@@ -10,9 +10,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button'; // Import Button
-import { Textarea } from '@/components/ui/textarea'; // Import Textarea
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Edit, Save, XCircle } from 'lucide-react'; // Import icons
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Edit, Save, XCircle, Folder } from 'lucide-react'; // Import icons, added Folder
 
 interface TopicDisplayProps {
   results: ProcessedConversationResult;
@@ -23,18 +23,19 @@ interface TopicDisplayProps {
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
   const elements = lines.map((line, index) => {
-    line = line.trim();
+    // Trim leading/trailing whitespace but preserve internal spaces
+    line = line.trimStart().trimEnd();
 
     // Inline code ticks: `code` becomes <code>code</code>
     const renderInlineCode = (text: string) => {
-      // Match code ticks that are not escaped
-      const parts = text.split(/(`.+?`)/g);
-      return parts.map((part, partIndex) => {
-        if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-          return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono">{part.substring(1, part.length - 1)}</code>;
-        }
-        return part;
-      });
+        // Match code ticks that are not escaped and handle potential nested/complex scenarios better
+        const parts = text.split(/(`[^`]+`)/);
+        return parts.map((part, partIndex) => {
+            if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+            return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono">{part.substring(1, part.length - 1)}</code>;
+            }
+            return part;
+        });
     };
 
      // Basic bold support: **bold** becomes <strong>bold</strong>
@@ -53,15 +54,17 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
     if (line.startsWith('## ')) {
       // H3 headings
+      // Apply bold and inline code rendering to the heading text
       return <h3 key={index} className="text-lg font-semibold mt-4 mb-2">{renderBold(line.substring(3))}</h3>;
     }
     if (line.startsWith('* ') || line.startsWith('- ')) {
       // Basic bullet points
+      // Apply bold and inline code rendering to list item content
       return <li key={index} className="ml-4">{renderBold(line.substring(2))}</li>;
     }
-    // Handle empty lines as paragraph breaks
+    // Handle empty lines as paragraph breaks more simply
     if (line === '') {
-        return <div key={index} className="h-2"></div>; // Render a small space for empty lines
+        return <br key={index} />; // Use <br> for potentially better spacing control via CSS if needed
     }
 
     // Regular paragraph with bold and inline code support
@@ -103,7 +106,7 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
 
 
 export function TopicDisplay({ results, onNotesUpdate }: TopicDisplayProps) {
-  const { topicsSummary, keyTopics, conceptsMap, codeAnalysis, studyNotes } = results;
+  const { topicsSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results; // Destructure category
 
   // State for editing study notes
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
@@ -142,7 +145,7 @@ export function TopicDisplay({ results, onNotesUpdate }: TopicDisplayProps) {
     { value: 'overview', label: 'Overview', icon: FileText, hasContent: hasOverviewContent },
     { value: 'concepts', label: 'Concept Map', icon: Shapes, hasContent: hasConceptsContent },
     { value: 'code', label: 'Code Insight', icon: Code, hasContent: hasCodeAnalysisContent },
-    { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent }, // Label is fine
+    { value: 'notes', label: 'Study Notes', icon: Lightbulb, hasContent: hasStudyNotesContent },
   ].filter(tab => tab.hasContent); // Filter out tabs with no content
 
   // If no tabs have content, show a message
@@ -151,6 +154,11 @@ export function TopicDisplay({ results, onNotesUpdate }: TopicDisplayProps) {
       <Card className="w-full mt-6">
         <CardHeader>
           <CardTitle>Conversation Analysis</CardTitle>
+           {category && (
+            <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1">
+                <Folder className="h-3 w-3" /> {category}
+            </Badge>
+           )}
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">No significant topics, concepts, code insights, or study notes found in the provided conversation.</p>
@@ -167,6 +175,12 @@ export function TopicDisplay({ results, onNotesUpdate }: TopicDisplayProps) {
       <CardHeader>
         <CardTitle>Conversation Analysis</CardTitle>
         <CardDescription>Explore the insights extracted from the conversation.</CardDescription>
+         {/* Display Category Badge if available */}
+         {category && (
+            <Badge variant="outline" className="mt-2 w-fit flex items-center gap-1 text-sm">
+                <Folder className="h-3 w-3" /> {category}
+            </Badge>
+           )}
       </CardHeader>
       <CardContent>
         <Tabs defaultValue={defaultTabValue} className="w-full">
@@ -301,6 +315,17 @@ export function TopicDisplay({ results, onNotesUpdate }: TopicDisplayProps) {
                                     <Edit className="h-4 w-4 mr-1" /> Edit
                                 </Button>
                             )}
+                             {/* Add Save/Cancel buttons in edit mode */}
+                             {isEditingNotes && (
+                                <div className="flex gap-2">
+                                    <Button variant="ghost" size="sm" onClick={handleCancelEditClick}>
+                                        <XCircle className="h-4 w-4 mr-1" /> Cancel
+                                    </Button>
+                                    <Button variant="default" size="sm" onClick={handleSaveNotesClick}>
+                                        <Save className="h-4 w-4 mr-1" /> Save Notes
+                                    </Button>
+                                </div>
+                            )}
                         </div>
 
                          {isEditingNotes ? (
@@ -312,14 +337,7 @@ export function TopicDisplay({ results, onNotesUpdate }: TopicDisplayProps) {
                                     className="text-sm"
                                     placeholder="Edit your study notes..."
                                 />
-                                <div className="flex justify-end gap-2">
-                                     <Button variant="ghost" size="sm" onClick={handleCancelEditClick}>
-                                        <XCircle className="h-4 w-4 mr-1" /> Cancel
-                                    </Button>
-                                    <Button variant="default" size="sm" onClick={handleSaveNotesClick}>
-                                        <Save className="h-4 w-4 mr-1" /> Save Notes
-                                    </Button>
-                                </div>
+                                {/* Buttons are moved above */}
                             </div>
                         ) : (
                              studyNotes ? (

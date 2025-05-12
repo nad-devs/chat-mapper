@@ -12,13 +12,29 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Loader2, Brain } from 'lucide-react'; // Import icons
 import { useToast } from "@/hooks/use-toast"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { CheckCircle, AlertCircle } from 'lucide-react'; // Icons for summary
 
 // Initial state for quiz generation action
 const initialQuizState: GenerateQuizResult = { quizTopics: null, error: null };
 
+// Define initial analysis state explicitly to include category
+const initialAnalysisState: ProcessedConversationResult = {
+    topicsSummary: '',
+    keyTopics: [],
+    category: null, // Add category
+    conceptsMap: null,
+    codeAnalysis: null,
+    studyNotes: null,
+    error: null,
+    originalConversationText: '',
+};
+
+
 export default function Home() {
   // State for initial conversation processing
   const [isLoadingAnalysis, setIsLoadingAnalysis] = React.useState(false);
+  // Use the explicit initial state
   const [analysisResults, setAnalysisResults] = React.useState<ProcessedConversationResult | null>(null);
 
   // State for quiz generation and interaction
@@ -123,6 +139,15 @@ export default function Home() {
      toast({ title: "Notes Updated", description: "Your study notes have been saved locally." });
   }, [toast]);
 
+  const handleRestartQuizFlow = () => {
+    setShowQuizSummary(false); // Hide summary
+    setIsQuizzing(false); // Ensure not in quiz mode
+    // Reset quiz-specific states if needed, though they get reset on new analysis anyway
+    // setQuizTopics(null);
+    // setRememberedTopics([]);
+    // setReviewTopics([]);
+  };
+
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-gradient-to-br from-background to-secondary/10">
@@ -141,7 +166,7 @@ export default function Home() {
           </p>
         </header>
 
-        {/* Hide input form during quiz */}
+        {/* Hide input form during quiz or summary */}
         {!isQuizzing && !showQuizSummary && (
             <ChatInputForm
             onProcessingStart={handleAnalysisStart}
@@ -153,7 +178,7 @@ export default function Home() {
         {/* Loading/Results Display Logic */}
         {isLoadingAnalysis && <LoadingSkeleton />}
 
-         {/* Display Analysis Results */}
+         {/* Display Analysis Results (hide if quizzing or showing summary) */}
         {!isLoadingAnalysis && analysisResults && !analysisResults.error && !isQuizzing && !showQuizSummary && (
             <>
                 <TopicDisplay results={analysisResults} onNotesUpdate={handleNotesUpdate} />
@@ -180,16 +205,20 @@ export default function Home() {
 
         {/* Display Quiz Summary */}
         {showQuizSummary && (
-            <QuizSummary remembered={rememberedTopics} review={reviewTopics} onRestart={() => setShowQuizSummary(false)} />
+            <QuizSummary
+                remembered={rememberedTopics}
+                review={reviewTopics}
+                onRestart={handleRestartQuizFlow} // Use updated handler
+            />
         )}
 
-        {/* Initial State / Error Message */}
+        {/* Initial State / Error Message (hide if loading, quizzing, or showing summary) */}
         {!isLoadingAnalysis && !analysisResults && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-muted-foreground mt-6">
               Enter a conversation above and click Analyze to see the results.
             </div>
         )}
-         {/* Display error from analysis */}
+         {/* Display error from analysis (hide if loading, quizzing, or showing summary) */}
          {!isLoadingAnalysis && analysisResults?.error && !isQuizzing && !showQuizSummary && (
             <div className="text-center text-red-500 mt-6 p-4 border border-red-500/50 bg-red-500/10 rounded-md">
               Analysis Error: {analysisResults.error}
@@ -254,8 +283,6 @@ function LoadingSkeleton() {
 }
 
 // --- Quiz Summary Component ---
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { CheckCircle, AlertCircle } from 'lucide-react'; // Icons for summary
 
 interface QuizSummaryProps {
     remembered: QuizTopic[];

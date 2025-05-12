@@ -20,9 +20,10 @@ interface ChatInputFormProps {
 const initialState: ProcessedConversationResult = {
     topicsSummary: '',
     keyTopics: [],
+    category: null, // Initialize category
     conceptsMap: null,
     codeAnalysis: null,
-    studyNotes: null, // Updated field name
+    studyNotes: null,
     error: null,
 };
 
@@ -58,9 +59,10 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
           // Check if *any* data was successfully processed
           const hasData = state.topicsSummary ||
                           (state.keyTopics && state.keyTopics.length > 0) ||
+                          state.category || // Check for category
                           state.conceptsMap ||
                           (state.codeAnalysis && (state.codeAnalysis.learnedConcept || state.codeAnalysis.finalCodeSnippet)) ||
-                          state.studyNotes; // Updated check for any data including studyNotes
+                          state.studyNotes;
 
           if (hasData) {
               console.log('[Form Effect] Action successful with data.'); // Log success with data
@@ -120,4 +122,3 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete }: ChatI
     </Card>
   );
 }
-
