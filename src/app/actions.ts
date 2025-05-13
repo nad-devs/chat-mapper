@@ -8,7 +8,7 @@ import { generateStudyNotes, GenerateStudyNotesOutput } from '@/ai/flows/generat
 import { generateQuizTopics, GenerateQuizTopicsOutput, QuizTopic } from '@/ai/flows/generate-quiz-topics';
 // Import Firestore related functions
 import { db, serverTimestamp } from '@/lib/firebase';
-import { collection, addDoc, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, Timestamp, doc, updateDoc } from 'firebase/firestore';
 
 // --- Data Structures ---
 
@@ -346,7 +346,7 @@ export async function saveEntryAction(
     try {
         const entryToSave: Omit<LearningEntry, 'id' | 'createdAt' | 'createdAtISO'> = {
             topicName: topicName,
-            category: category ?? null,
+            category: category ?? null, // If category is empty string from form, store as null
         };
         if (learningSummary) entryToSave.learningSummary = learningSummary; 
         if (codeSnippetContent) entryToSave.codeSnippetContent = codeSnippetContent;
@@ -409,4 +409,58 @@ export async function getLearningEntriesAction(): Promise<GetLearningEntriesResu
         if (error.stack) console.error(error.stack);
         return JSON.parse(JSON.stringify({ entries: null, error: `Failed to fetch learning entries: ${errorMessage}` }));
     }
+}
+
+// --- Action for Updating an Entry's Category ---
+const updateEntryCategoryInputSchema = z.object({
+  entryId: z.string().min(1, "Entry ID cannot be empty."),
+  newCategory: z.string().optional().nullable(), // Allow empty string to be treated as 'Uncategorized' (null)
+});
+
+export type UpdateEntryCategoryResult = {
+  success: boolean;
+  error?: string | null;
+  info?: string | null;
+};
+
+export async function updateEntryCategoryAction(
+  prevState: UpdateEntryCategoryResult | null,
+  formData: FormData
+): Promise<UpdateEntryCategoryResult> {
+  console.log('[Action] updateEntryCategoryAction started.');
+
+  const validatedFields = updateEntryCategoryInputSchema.safeParse({
+    entryId: formData.get('entryId'),
+    newCategory: formData.get('newCategory'),
+  });
+
+  if (!validatedFields.success) {
+    const errorMessages = validatedFields.error.flatten().fieldErrors;
+    const firstError = Object.values(errorMessages).flat()[0] || "Invalid input for updating category.";
+    console.error('[Action] Update Category Validation failed:', firstError, errorMessages);
+    return { success: false, error: firstError };
+  }
+
+  const { entryId, newCategory } = validatedFields.data;
+  // Treat empty string as null for "Uncategorized"
+  const categoryToSave = newCategory && newCategory.trim().length > 0 ? newCategory.trim() : null;
+
+
+  console.log(`[Action] Attempting to update category for entry ID: ${entryId} to "${categoryToSave ?? 'Uncategorized'}"`);
+
+  try {
+    const entryRef = doc(db, "learningEntries", entryId);
+    await updateDoc(entryRef, {
+      category: categoryToSave,
+    });
+
+    const successMsg = `Category for entry updated successfully to "${categoryToSave ?? 'Uncategorized'}"!`;
+    console.log(`[Action] ${successMsg}`);
+    return { success: true, error: null, info: successMsg };
+  } catch (error: any) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred while updating category in Firestore.';
+    console.error("[Action] Error updating category in Firestore:", errorMessage);
+    if (error.stack) console.error(error.stack);
+    return { success: false, error: `Failed to update category: ${errorMessage}` };
+  }
 }

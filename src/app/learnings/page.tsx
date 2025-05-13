@@ -2,19 +2,23 @@
 'use client';
 
 import * as React from 'react';
-import { getLearningEntriesAction, type LearningEntry, type GetLearningEntriesResult } from '@/app/actions';
+import { getLearningEntriesAction, updateEntryCategoryAction, type LearningEntry, type GetLearningEntriesResult, type UpdateEntryCategoryResult } from '@/app/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { useToast } from "@/hooks/use-toast";
+import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive, Edit, Save, X, Tag } from 'lucide-react';
 import Link from 'next/link';
 import { format, isSameDay } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { useActionState, startTransition } from 'react';
+
 
 // Updated Markdown-like renderer to handle basic formatting (lists, bold, code)
 // Consistent with the one used in TopicDisplay
@@ -129,28 +133,37 @@ export default function LearningsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [activeAccordionItems, setActiveAccordionItems] = React.useState<string[]>([]);
 
-  React.useEffect(() => {
-    async function fetchLearnings() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const result: GetLearningEntriesResult = await getLearningEntriesAction();
-        if (result.error) {
-          setError(result.error);
-          setAllLearnings(null);
-        } else {
-          const sortedLearnings = result.entries?.sort((a, b) => new Date(b.createdAtISO!).getTime() - new Date(a.createdAtISO!).getTime()) ?? [];
-          setAllLearnings(sortedLearnings);
-        }
-      } catch (e: any) {
-        setError(e.message || 'Failed to fetch learning entries.');
+  const { toast } = useToast();
+
+  // State for category editing
+  const [editingCategoryEntryId, setEditingCategoryEntryId] = React.useState<string | null>(null);
+  const [currentEditCategoryValue, setCurrentEditCategoryValue] = React.useState<string>('');
+  const [updateCategoryState, updateCategoryFormAction, isUpdateCategoryPending] = useActionState(updateEntryCategoryAction, null);
+
+
+  const fetchLearnings = React.useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result: GetLearningEntriesResult = await getLearningEntriesAction();
+      if (result.error) {
+        setError(result.error);
         setAllLearnings(null);
-      } finally {
-        setIsLoading(false);
+      } else {
+        const sortedLearnings = result.entries?.sort((a, b) => new Date(b.createdAtISO!).getTime() - new Date(a.createdAtISO!).getTime()) ?? [];
+        setAllLearnings(sortedLearnings);
       }
+    } catch (e: any) {
+      setError(e.message || 'Failed to fetch learning entries.');
+      setAllLearnings(null);
+    } finally {
+      setIsLoading(false);
     }
-    fetchLearnings();
   }, []);
+
+  React.useEffect(() => {
+    fetchLearnings();
+  }, [fetchLearnings]);
 
   React.useEffect(() => {
     if (allLearnings) {
@@ -171,7 +184,15 @@ export default function LearningsPage() {
       }, {});
 
       setGroupedLearnings(grouped);
-      setActiveAccordionItems(Object.keys(grouped));
+      // Preserve active accordion items if they still exist, otherwise open all new ones
+      setActiveAccordionItems(prev => {
+        const newActiveItems = Object.keys(grouped);
+        if (prev.every(item => newActiveItems.includes(item)) && prev.length === newActiveItems.length) {
+          return prev;
+        }
+        return newActiveItems;
+      });
+
 
     } else {
       setGroupedLearnings({});
@@ -179,8 +200,44 @@ export default function LearningsPage() {
     }
   }, [selectedDate, allLearnings]);
 
+  // Effect to handle category update action result
+  React.useEffect(() => {
+    if (updateCategoryState) {
+        if (updateCategoryState.success && updateCategoryState.info) {
+            toast({ title: "Category Updated", description: updateCategoryState.info });
+            setEditingCategoryEntryId(null); // Close editor
+            setCurrentEditCategoryValue('');
+            fetchLearnings(); // Re-fetch to reflect changes
+        } else if (updateCategoryState.error) {
+            toast({ title: "Update Failed", description: updateCategoryState.error, variant: "destructive" });
+        }
+    }
+  }, [updateCategoryState, toast, fetchLearnings]);
 
-  if (isLoading) {
+
+  const handleEditCategory = (entry: LearningEntry) => {
+    if (entry.id) {
+      setEditingCategoryEntryId(entry.id);
+      setCurrentEditCategoryValue(entry.category || '');
+    }
+  };
+
+  const handleCancelCategoryEdit = () => {
+    setEditingCategoryEntryId(null);
+    setCurrentEditCategoryValue('');
+  };
+
+  const handleSaveCategoryEdit = (entryId: string) => {
+    const formData = new FormData();
+    formData.append('entryId', entryId);
+    formData.append('newCategory', currentEditCategoryValue);
+    startTransition(() => {
+        updateCategoryFormAction(formData);
+    });
+  };
+
+
+  if (isLoading && !allLearnings) { // Only show full page skeleton on initial load
     return (
       <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-background text-foreground">
         <div className="w-full max-w-6xl space-y-8">
@@ -296,7 +353,8 @@ export default function LearningsPage() {
              <h2 className="text-2xl font-semibold mb-4 text-foreground">
               {selectedDate ? `Entries for ${format(selectedDate, "MMMM d, yyyy")}` : "All Entries"} by Category
             </h2>
-            {Object.keys(groupedLearnings).length > 0 ? (
+            {isLoading && <Skeleton className="h-40 w-full" />} 
+            {!isLoading && Object.keys(groupedLearnings).length > 0 ? (
                  <Accordion
                     type="multiple"
                     value={activeAccordionItems}
@@ -322,9 +380,11 @@ export default function LearningsPage() {
                                      // Style individual entry card
                                     <Card key={entry.id} className="overflow-hidden shadow-sm bg-card text-card-foreground border border-border/50">
                                         <CardHeader className="bg-muted/50 dark:bg-muted/20 p-3 border-b border-border/50">
-                                            <CardTitle className="text-base flex items-center gap-2 text-foreground">
-                                                <Archive className="h-4 w-4 text-primary" />
-                                                {entry.topicName}
+                                            <CardTitle className="text-base flex items-center justify-between text-foreground">
+                                                <div className="flex items-center gap-2">
+                                                    <Archive className="h-4 w-4 text-primary" />
+                                                    {entry.topicName}
+                                                </div>
                                             </CardTitle>
                                             {entry.createdAtISO && (
                                             <CardDescription className="text-xs pt-1 text-muted-foreground">
@@ -334,6 +394,38 @@ export default function LearningsPage() {
                                             )}
                                         </CardHeader>
                                         <CardContent className="p-3 space-y-4">
+                                            {/* Category Display/Edit */}
+                                            <div className="mb-2">
+                                                <label className="text-xs font-medium text-muted-foreground block mb-1">Category</label>
+                                                {editingCategoryEntryId === entry.id ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <Input
+                                                            type="text"
+                                                            value={currentEditCategoryValue}
+                                                            onChange={(e) => setCurrentEditCategoryValue(e.target.value)}
+                                                            placeholder="Enter category (or leave blank)"
+                                                            className="h-8 text-sm"
+                                                        />
+                                                        <Button size="icon" variant="ghost" onClick={() => handleSaveCategoryEdit(entry.id!)} disabled={isUpdateCategoryPending} className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                                                            {isUpdateCategoryPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                                        </Button>
+                                                        <Button size="icon" variant="ghost" onClick={handleCancelCategoryEdit} className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge variant={entry.category ? "secondary" : "outline"} className="text-xs cursor-default">
+                                                            <Tag className="h-3 w-3 mr-1.5" />
+                                                            {entry.category || 'Uncategorized'}
+                                                        </Badge>
+                                                        <Button variant="ghost" size="icon" onClick={() => handleEditCategory(entry)} className="h-6 w-6 text-muted-foreground hover:text-primary">
+                                                            <Edit className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+
                                             {/* Display Learning Summary */}
                                             {entry.learningSummary && (
                                                 <div>
@@ -401,3 +493,4 @@ export default function LearningsPage() {
     </main>
   );
 }
+
