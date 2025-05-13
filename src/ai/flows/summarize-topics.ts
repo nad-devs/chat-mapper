@@ -23,7 +23,8 @@ const SummarizeTopicsOutputSchema = z.object({
     .string()
     .describe('A concise summary (paragraph or simple bullet points) of the main concepts or techniques the learner grasped or discussed during the conversation. Focus on the core takeaways.'),
   keyTopics: z.array(z.string()).describe('A list of the most important specific topics or terms discussed (e.g., "Python Dictionaries", "Recursion", "Valid Anagram Problem", "CSS Flexbox").'),
-  category: z.string().nullable().describe('The main category of the conversation (e.g., "Backend Development", "Data Structures & Algorithms", "Leetcode Problem", "Frontend Frameworks", "Web Design", "General Conversation", "Other Technical"). Null if category is unclear.')
+  category: z.string().nullable().describe('The main category of the conversation (e.g., "Backend Development", "Data Structures & Algorithms", "Leetcode Problem", "Frontend Frameworks", "Web Design", "General Conversation", "Other Technical"). Null if category is unclear.'),
+  mainProblemOrTopicName: z.string().nullable().describe('A concise, human-readable title for the conversation, ideally the specific problem name (e.g., "Contains Duplicate Problem") or the core topic discussed. Null if not identifiable.'),
 });
 export type SummarizeTopicsOutput = z.infer<typeof SummarizeTopicsOutputSchema>;
 
@@ -52,8 +53,9 @@ Your task is to:
 1.  **Learning Summary:** Write a concise summary (1-3 sentences or a short bullet list) of the main technical concepts, skills, or problem-solving approaches the learner grasped or discussed. Focus on the key takeaways of the conversation. Keep it simple and direct.
 2.  **Key Topics:** Identify the most important, specific technical topics, terms, or problem names mentioned (e.g., "Python Dictionaries", "Recursion", "Valid Anagram Problem", "CSS Flexbox"). List these as an array of strings in the \`keyTopics\` field. Be specific.
 3.  **Category:** Determine the primary category of the conversation. Choose the *most specific relevant category* from: "Backend Development", "Data Structures & Algorithms", "Leetcode Problem", "Frontend Frameworks", "Web Design", "General Conversation", "Other Technical". If it's a specific Leetcode problem, use "Leetcode Problem". If unsure or ambiguous, use "General Conversation" or "Other Technical". Return this in the \`category\` field (or null if truly unclassifiable).
+4.  **Main Problem/Topic Name:** Identify a concise and descriptive name for the main problem solved or the central topic discussed. If it's a known coding problem (e.g., from LeetCode), use its standard name (e.g., "Contains Duplicate Problem", "Valid Anagram"). If not a specific problem, use a short, descriptive topic name (e.g., "Python Dictionary Optimization", "CSS Flexbox Layout"). Return this in the \`mainProblemOrTopicName\` field. If a clear, concise name cannot be determined, set this to null.
 
-Ensure the entire output strictly matches the requested JSON schema with 'learningSummary', 'keyTopics', and 'category' fields.
+Ensure the entire output strictly matches the requested JSON schema with 'learningSummary', 'keyTopics', 'category', and 'mainProblemOrTopicName' fields.
 `,
 });
 
@@ -68,13 +70,14 @@ const summarizeTopicsFlow = ai.defineFlow(
     // Ensure output is not null before returning
     if (!output) {
         // Provide a default structure on failure, matching the schema
-        return { learningSummary: "", keyTopics: [], category: null };
+        return { learningSummary: "", keyTopics: [], category: null, mainProblemOrTopicName: null };
     }
     // Ensure all fields are returned, defaulting if necessary
     return {
         learningSummary: output.learningSummary || "",
         keyTopics: output.keyTopics || [],
-        category: output.category !== undefined ? output.category : null
+        category: output.category !== undefined ? output.category : null,
+        mainProblemOrTopicName: output.mainProblemOrTopicName !== undefined ? output.mainProblemOrTopicName : null
     };
   }
 );

@@ -19,7 +19,8 @@ interface ChatInputFormProps {
 
 // Initial state matches the ProcessedConversationResult type
 const initialState: ProcessedConversationResult = {
-    learningSummary: null, // Changed from topicsSummary
+    learningSummary: null, 
+    mainProblemOrTopicName: null, // Added
     keyTopics: null,
     category: null,
     conceptsMap: null,
@@ -42,38 +43,30 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
   const isDisabled = isProcessing || isActionPending;
 
   React.useEffect(() => {
-    // Check if the action is NOT pending AND if the state has actually changed from the one used to initialize the hook
-    // Or if the state contains an error (indicating completion, even if failed)
     if (!isActionPending && (state !== actualInitialState || (state && state.error))) {
         console.log('[Form Effect] Action state received:', state);
-         // Ensure state is serializable before passing to handler
         try {
             const serializableState = JSON.parse(JSON.stringify(state));
-            onProcessingComplete(serializableState); // Pass the entire state object
+            onProcessingComplete(serializableState); 
         } catch (stringifyError) {
             console.error('[Form Effect] Error serializing action state:', stringifyError);
-            // Handle the error appropriately, e.g., show a generic error message
              onProcessingComplete({ ...initialState, error: "Failed to process results." });
         }
     }
-    // Intentionally limit deps to avoid loop if actualInitialState changes unnecessarily
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, isActionPending, onProcessingComplete]);
 
 
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-      // event.preventDefault(); // Not needed when using `action` prop
       console.log('[Form Submit] Form submitting via action prop. Triggering onProcessingStart.');
       onProcessingStart();
-      // No need to call formAction() manually, the form's `action` prop handles it.
   };
 
 
   return (
-    // Use the structure from the user's example code
     <form
       ref={formRef}
-      action={formAction} // Use the action returned by useActionState
+      action={formAction} 
       onSubmit={handleFormSubmit}
       className="space-y-4"
     >
@@ -88,8 +81,8 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
             name="conversationText"
             rows={15}
             required
-            key={initialText}
-            defaultValue={state?.originalConversationText || ''}
+            key={initialText} // Add key to re-render if initialText changes
+            defaultValue={state?.originalConversationText || ''} // Use defaultValue to allow state to update if needed
             aria-invalid={!!state?.error && !isActionPending && !isProcessing}
             aria-describedby="conversation-error-hint"
             className="min-h-[200px] resize-y group-disabled:opacity-50"

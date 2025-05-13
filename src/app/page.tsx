@@ -23,6 +23,7 @@ const initialQuizState: GenerateQuizResult = { quizTopics: null, error: null };
 // Define initial analysis state explicitly
 const initialAnalysisState: ProcessedConversationResult = {
     learningSummary: null,
+    mainProblemOrTopicName: null, // Added
     keyTopics: null,
     category: null,
     conceptsMap: null,

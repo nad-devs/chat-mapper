@@ -77,15 +77,22 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
          if (codeEndIndex === -1) codeEndIndex = lines.length;
 
          codeContent = lines.slice(index + 1, codeEndIndex).join('\n');
+         // To prevent rendering already processed code block lines as paragraphs
+         for (let i = index + 1; i < codeEndIndex; i++) {
+             lines[i] = '```processed_code_line```'; // Mark as processed
+         }
+
          return (
              <pre key={index} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border">
                  <code className={`language-${language} font-mono`}>{codeContent.trimEnd()}</code>
              </pre>
          );
      }
-     if (lines.slice(0, index).some((l, i) => l.trim().startsWith('```') && lines.slice(i + 1, index + 1).every(subL => subL.trim() !== '```'))) {
+     // Skip lines that were part of a processed code block
+     if (trimmedLine === '```processed_code_line```') {
         return null;
      }
+
     if (trimmedLine === '') {
         return <br key={index} />;
     }
@@ -96,12 +103,9 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
    let currentList: React.ReactNode[] = [];
    let listType: 'ul' | 'ol' | null = null;
 
-   elements.forEach((el, index) => {
-     if (!el) return; 
-
+   elements.filter(el => el !== null).forEach((el, index) => { // Filter out null elements
      const isListItem = React.isValidElement(el) && el.type === 'li';
-     const isPre = React.isValidElement(el) && el.type === 'pre';
-
+     
      if (isListItem) {
         const currentListType = el.props.value === undefined ? 'ul' : 'ol';
         if (listType && listType !== currentListType) {
@@ -123,11 +127,9 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
          currentList = [];
          listType = null;
        }
-       if (React.isValidElement(el) && (el.type === 'br' || el.type === 'pre' || (el.type === 'p' && el.props.children) || el.type === 'h3')) {
-           groupedElements.push(el);
-       } else if (!React.isValidElement(el)) {
-       } else if (React.isValidElement(el) && el.type !== 'p') {
-             groupedElements.push(el);
+       // Ensure only valid elements are pushed
+       if (React.isValidElement(el)) {
+            groupedElements.push(el);
        }
      }
    });
@@ -148,7 +150,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const { toast } = useToast();
   const [saveState, saveFormAction, isSaving] = useActionState(saveEntryAction, null);
 
-  const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
+  const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes, mainProblemOrTopicName } = results;
 
   // --- State for editing Title ---
   const [isEditingTitle, setIsEditingTitle] = React.useState(false);
@@ -156,16 +158,26 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   // --- Generate initial topic name based on new logic ---
   const initialTopicNameToSave = React.useMemo(() => {
-    let title = "Untitled Learning";
-    if (results.keyTopics && results.keyTopics.length > 0) {
-        title = results.keyTopics[0];
-    } else if (results.category) {
-        title = results.category;
-    } else if (results.codeAnalysis?.learnedConcept) {
-        title = results.codeAnalysis.learnedConcept;
+    if (mainProblemOrTopicName) {
+        return String(mainProblemOrTopicName);
     }
-    return String(title);
-  }, [results.keyTopics, results.category, results.codeAnalysis?.learnedConcept]);
+    if (keyTopics && keyTopics.length > 0) {
+        const problemLikeTopic = keyTopics.find(topic =>
+            topic.toLowerCase().includes("problem") ||
+            topic.toLowerCase().includes("challenge") ||
+            topic.toLowerCase().includes("leetcode")
+        );
+        if (problemLikeTopic) return String(problemLikeTopic);
+        return String(keyTopics[0]); 
+    }
+    if (codeAnalysis?.learnedConcept) {
+        return String(codeAnalysis.learnedConcept);
+    }
+    if (category) {
+        return String(category);
+    }
+    return "Untitled Learning";
+  }, [mainProblemOrTopicName, keyTopics, codeAnalysis?.learnedConcept, category]);
 
   // Initialize or update editedTitle when results change or editing stops
   React.useEffect(() => {
@@ -236,9 +248,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   // --- Handlers for Editing ---
   const handleEditTitle = () => setIsEditingTitle(true);
-  const handleSaveTitleEdit = () => setIsEditingTitle(false); // Saves to local state `editedTitle`
+  const handleSaveTitleEdit = () => setIsEditingTitle(false); 
   const handleCancelTitleEdit = () => {
-    setEditedTitle(initialTopicNameToSave); // Revert to auto-generated
+    setEditedTitle(initialTopicNameToSave); 
     setIsEditingTitle(false);
   };
 
@@ -338,7 +350,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                     </Button>
                 </div>
             ) : (
-                <div className="flex items-center justify-between p-2 rounded-md bg-muted/30 min-h-[36px]">
+                <div className="flex items-center justify-between p-2 rounded-md bg-muted/30 dark:bg-muted/10 min-h-[36px]">
                     <h3 className="text-md font-semibold text-foreground flex-grow break-words">
                         {editedTitle || "Untitled Learning"}
                     </h3>
@@ -504,17 +516,17 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
             {hasCodeAnalysisContent && codeAnalysis && (
                  <TabsContent value="code">
-                    <div className="space-y-6"> {/* Increased spacing */}
+                    <div className="space-y-6"> 
                         <h3 className="text-lg font-medium flex items-center text-foreground">
                         <Code className="mr-2 h-4 w-4" /> Code Analysis
                         </h3>
                         {codeAnalysis.learnedConcept && (
                              <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
-                                <h4 className="text-sm font-semibold mb-1.5 text-secondary-foreground">Concept Learned:</h4>
-                                <p className="whitespace-pre-wrap text-sm text-foreground/90">{codeAnalysis.learnedConcept}</p>
+                                <h4 className="text-sm font-semibold mb-1.5 text-foreground dark:text-foreground/90">Concept Learned:</h4>
+                                <p className="whitespace-pre-wrap text-sm text-foreground/90 dark:text-foreground/80">{codeAnalysis.learnedConcept}</p>
                             </div>
                         )}
-                        {codeAnalysis.finalCodeSnippet && (
+                        {codeAnalysis.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0 && (
                             <Card className="bg-muted/10 dark:bg-muted/5 overflow-hidden border-border/50">
                                 <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/10 border-b border-border/50">
                                     <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
@@ -569,4 +581,3 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
      </Card>
   );
 }
-
