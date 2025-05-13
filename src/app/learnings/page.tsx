@@ -456,7 +456,7 @@ export default function LearningsPage() {
                                             <div className="flex-grow">
                                                 <CardTitle className="text-base flex items-center text-foreground">
                                                     <Archive className="h-4 w-4 text-primary mr-2" />
-                                                    {entry.topicName}
+                                                    {entry.topicName} {/* Use topicName for the main title */}
                                                 </CardTitle>
                                                 {entry.createdAtISO && (
                                                 <CardDescription className="text-xs pt-1 text-muted-foreground">

@@ -71,16 +71,12 @@ const summarizeTopicsFlow = ai.defineFlow(
   }, async input => {
     const {output} = await summarizeTopicsPrompt(input);
 
- if (!output || !output.mainProblemOrTopicName) {
+    if (!output || !output.mainProblemOrTopicName) {
  // Provide a default structure on failure or if no topic name is identified
  return { learningSummary: "", keyTopics: [], category: null, mainProblemOrTopicName: null };
     }
 
     // Check for existing topics with the same mainProblemOrTopicName
-    const topicsRef = collection(db, 'topics');
-    const q = query(topicsRef, where('mainProblemOrTopicName', '==', output.mainProblemOrTopicName));
-    const querySnapshot = await getDocs(q);
-
     const isDuplicate = !querySnapshot.empty;
 
     if (isDuplicate) {
