@@ -11,13 +11,14 @@ import {
   CardTitle,
   CardFooter
 } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'; // Use Tabs from UI
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input'; // Import Input for title editing
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X, Map, BookOpen, Tag } from 'lucide-react'; // Import more icons
+import { FileText, Link as LinkIcon, ListTree, Shapes, Tags, Code, BrainCircuit, Lightbulb, Folder, Archive, Loader2, Edit, Save, X, Map, BookOpen, Tag, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TopicDisplayProps {
@@ -35,7 +36,6 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         const parts = text.split(/(`[^`]+`)/);
         return parts.map((part, partIndex) => {
             if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-            // Added styling for inline code
             return <code key={partIndex} className="bg-muted px-1 py-0.5 rounded text-sm font-mono text-foreground">{part.substring(1, part.length - 1)}</code>;
             }
             return part;
@@ -53,24 +53,19 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
         });
     };
 
-    // Handle H3 (###)
     if (trimmedLine.startsWith('### ')) {
       return <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-primary">{renderBold(trimmedLine.substring(4))}</h3>;
     }
-    // Handle bullet points (* or -)
     if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
       return <li key={index} className="ml-5 list-disc">{renderBold(trimmedLine.substring(2))}</li>;
     }
-     // Handle numbered lists (1.)
     if (/^\d+\.\s/.test(trimmedLine)) {
          const match = trimmedLine.match(/^(\d+\.\s)(.*)/);
          if (match) {
             return <li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>;
          }
     }
-    // Handle code blocks ``` ... ``` (simple display) - render inner code block
      if (trimmedLine.startsWith('```')) {
-         // Find the closing ```
          let codeContent = '';
          let language = '';
          const langMatch = trimmedLine.match(/^```(\w*)/);
@@ -78,39 +73,31 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
              language = langMatch[1];
          }
          let inCodeBlock = true;
-         // Simple approach: Assume block ends before next ``` or end of lines
          let codeEndIndex = lines.findIndex((l, i) => i > index && l.trim() === '```');
          if (codeEndIndex === -1) codeEndIndex = lines.length;
 
          codeContent = lines.slice(index + 1, codeEndIndex).join('\n');
-
-         // Render the code block as pre/code - note: this simple renderer doesn't skip lines already rendered
          return (
              <pre key={index} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border">
                  <code className={`language-${language} font-mono`}>{codeContent.trimEnd()}</code>
              </pre>
          );
      }
-     // Avoid rendering lines that are part of a code block already handled
      if (lines.slice(0, index).some((l, i) => l.trim().startsWith('```') && lines.slice(i + 1, index + 1).every(subL => subL.trim() !== '```'))) {
         return null;
      }
-
-    // Handle empty lines as breaks (but not within code blocks)
     if (trimmedLine === '') {
         return <br key={index} />;
     }
-    // Default paragraph rendering
     return <p key={index} className="mb-2 last:mb-0">{renderBold(trimmedLine)}</p>;
   });
 
-  // Group list items
    const groupedElements: React.ReactNode[] = [];
    let currentList: React.ReactNode[] = [];
    let listType: 'ul' | 'ol' | null = null;
 
    elements.forEach((el, index) => {
-     if (!el) return; // Skip null elements (like consumed code block lines)
+     if (!el) return; 
 
      const isListItem = React.isValidElement(el) && el.type === 'li';
      const isPre = React.isValidElement(el) && el.type === 'pre';
@@ -136,34 +123,24 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
          currentList = [];
          listType = null;
        }
-       // Don't render paragraphs that are just empty strings (often result of split)
-       // unless it's an intentional break <br/> or code block <pre>
        if (React.isValidElement(el) && (el.type === 'br' || el.type === 'pre' || (el.type === 'p' && el.props.children) || el.type === 'h3')) {
            groupedElements.push(el);
        } else if (!React.isValidElement(el)) {
-            // Handle raw text nodes if necessary, though unlikely with current logic
-            // groupedElements.push(el);
        } else if (React.isValidElement(el) && el.type !== 'p') {
-            // Add other valid elements like h3 (already handled above, but kept for structure)
              groupedElements.push(el);
        }
      }
    });
 
-   // Add any remaining list
    if (currentList.length > 0 && listType) {
      const ListComponent = listType === 'ol' ? 'ol' : 'ul';
      const listClass = listType === 'ol' ? "list-decimal" : "list-disc";
      groupedElements.push(<ListComponent key="list-last" className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
    }
 
-  // Apply base text styling
-  // Updated prose classes for better dark mode support and general styling
   return <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none prose-headings:text-primary prose-p:text-foreground/90 prose-li:text-foreground/90 prose-strong:text-foreground prose-code:bg-muted prose-code:text-foreground prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted prose-pre:text-foreground prose-pre:border prose-pre:rounded-md prose-pre:p-3">{groupedElements}</div>;
 };
 
-
-// Use the improved renderer for Study Notes
 const StudyNotesRenderer = SimpleMarkdownRenderer;
 
 
@@ -173,11 +150,29 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   const { learningSummary, keyTopics, category, conceptsMap, codeAnalysis, studyNotes } = results;
 
-  // Determine a simpler title: Use Category if available, otherwise first Key Topic, or learned concept, or fallback
-  const displayTitle = category || (keyTopics && keyTopics.length > 0 ? keyTopics[0] : codeAnalysis?.learnedConcept) || "Analysis Results";
+  // --- State for editing Title ---
+  const [isEditingTitle, setIsEditingTitle] = React.useState(false);
+  const [editedTitle, setEditedTitle] = React.useState('');
 
-  // Topic name for saving (prioritize learned concept, then title)
-  const topicNameToSave = codeAnalysis?.learnedConcept || displayTitle || "Untitled Learning";
+  // --- Generate initial topic name based on new logic ---
+  const initialTopicNameToSave = React.useMemo(() => {
+    let title = "Untitled Learning";
+    if (results.keyTopics && results.keyTopics.length > 0) {
+        title = results.keyTopics[0];
+    } else if (results.category) {
+        title = results.category;
+    } else if (results.codeAnalysis?.learnedConcept) {
+        title = results.codeAnalysis.learnedConcept;
+    }
+    return String(title);
+  }, [results.keyTopics, results.category, results.codeAnalysis?.learnedConcept]);
+
+  // Initialize or update editedTitle when results change or editing stops
+  React.useEffect(() => {
+    if (!isEditingTitle) {
+        setEditedTitle(initialTopicNameToSave);
+    }
+  }, [initialTopicNameToSave, isEditingTitle]);
 
 
   // State for editing Study Notes
@@ -188,13 +183,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   const [isEditingSummary, setIsEditingSummary] = React.useState(false);
   const [editedSummary, setEditedSummary] = React.useState(learningSummary || '');
 
-  // Update local state if the results prop changes (e.g., new analysis)
   React.useEffect(() => {
-    setEditedNotes(studyNotes || '');
-    setEditedSummary(learningSummary || '');
-    setIsEditingNotes(false); // Reset editing state on new analysis
-    setIsEditingSummary(false);
-  }, [studyNotes, learningSummary]);
+    if (!isEditingNotes) setEditedNotes(studyNotes || '');
+    if (!isEditingSummary) setEditedSummary(learningSummary || '');
+  }, [studyNotes, learningSummary, isEditingNotes, isEditingSummary]);
 
   React.useEffect(() => {
     if (saveState) {
@@ -208,15 +200,14 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
 
   const handleSaveAllInsights = () => {
-    // Use the potentially EDITED notes and summary, but original code
-    const summaryToSave = editedSummary; // Use edited summary
+    const titleToSave = editedTitle.trim() || initialTopicNameToSave;
+    const summaryToSave = editedSummary;
     const codeSnippetToSave = results.codeAnalysis?.finalCodeSnippet;
     const codeLangToSave = results.codeAnalysis?.codeLanguage;
-    const notesToSave = editedNotes; // Use edited notes
+    const notesToSave = editedNotes;
 
     const formData = new FormData();
-    formData.append('topicName', topicNameToSave); // Use the derived topic name
-    // Save category if it exists
+    formData.append('topicName', titleToSave);
     if (category) {
       formData.append('category', category);
     }
@@ -233,7 +224,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
       formData.append('studyNotesContent', notesToSave);
     }
 
-    // Check if at least one content field has data
     if (!formData.has('learningSummary') && !formData.has('codeSnippetContent') && !formData.has('studyNotesContent')) {
         toast({ title: "Nothing to Save", description: "No content available to save from this analysis." });
         return;
@@ -245,23 +235,21 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   };
 
   // --- Handlers for Editing ---
-
-  // Study Notes Edit
-  const handleEditNotes = () => {
-    setEditedNotes(studyNotes || '');
-    setIsEditingNotes(true);
+  const handleEditTitle = () => setIsEditingTitle(true);
+  const handleSaveTitleEdit = () => setIsEditingTitle(false); // Saves to local state `editedTitle`
+  const handleCancelTitleEdit = () => {
+    setEditedTitle(initialTopicNameToSave); // Revert to auto-generated
+    setIsEditingTitle(false);
   };
+
+  const handleEditNotes = () => setIsEditingNotes(true);
   const handleSaveNotesEdit = () => setIsEditingNotes(false);
   const handleCancelNotesEdit = () => {
     setEditedNotes(studyNotes || '');
     setIsEditingNotes(false);
   };
 
-  // Learning Summary Edit
-  const handleEditSummary = () => {
-    setEditedSummary(learningSummary || '');
-    setIsEditingSummary(true);
-  };
+  const handleEditSummary = () => setIsEditingSummary(true);
   const handleSaveSummaryEdit = () => setIsEditingSummary(false);
   const handleCancelSummaryEdit = () => {
     setEditedSummary(learningSummary || '');
@@ -269,38 +257,34 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   };
 
   // --- Content Checks ---
-  const originalSummaryExists = !!learningSummary && learningSummary.trim().length > 0;
-  const originalNotesExist = !!studyNotes && studyNotes.trim().length > 0;
-  const originalCodeExists = !!codeAnalysis?.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0;
+  const currentLearningSummary = isEditingSummary ? editedSummary : learningSummary;
+  const currentStudyNotes = isEditingNotes ? editedNotes : studyNotes;
 
-  // Determine which tabs should be available based on content
-  const hasSummaryContent = originalSummaryExists || isEditingSummary;
+  const hasSummaryContent = !!currentLearningSummary && currentLearningSummary.trim().length > 0;
   const hasKeyTopicsContent = keyTopics && keyTopics.length > 0;
-  // const hasConceptsContent = conceptsMap && (conceptsMap.concepts?.length > 0 || conceptsMap.subtopics?.length > 0 || conceptsMap.relationships?.length > 0);
-  // Simplified concept map check based on example
-   const hasConceptsContent = !!conceptsMap;
-  const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || originalCodeExists);
-  const hasStudyNotesContent = originalNotesExist || isEditingNotes;
+  const hasConceptsContent = !!conceptsMap && (
+    (conceptsMap.concepts && conceptsMap.concepts.length > 0) ||
+    (conceptsMap.subtopics && conceptsMap.subtopics.length > 0) ||
+    (conceptsMap.relationships && conceptsMap.relationships.length > 0)
+  );
+  const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || (codeAnalysis.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0));
+  const hasStudyNotesContent = !!currentStudyNotes && currentStudyNotes.trim().length > 0;
 
   const availableTabs = [
-    // Combine Summary and Study Notes into one tab based on example
-    (hasSummaryContent || hasStudyNotesContent) && { value: 'summary', label: 'Summary', icon: BookOpen },
-    hasKeyTopicsContent && { value: 'topics', label: 'Topics', icon: Tag }, // Renamed from 'Key Topics'
+    (hasSummaryContent || hasStudyNotesContent) && { value: 'summary', label: 'Summary & Notes', icon: BookOpen },
+    hasKeyTopicsContent && { value: 'topics', label: 'Key Topics', icon: Tags },
     hasConceptsContent && { value: 'concepts', label: 'Concept Map', icon: Map },
-    hasCodeAnalysisContent && { value: 'code', label: 'Code Analysis', icon: Code }, // Renamed from 'Code Insight'
+    hasCodeAnalysisContent && { value: 'code', label: 'Code Analysis', icon: Code },
   ].filter(Boolean) as { value: string, label: string, icon: React.ElementType }[];
 
   const numTabs = availableTabs.length;
-  const gridColsClass = numTabs > 0 ? `grid-cols-${numTabs}` : 'grid-cols-1';
+  const gridColsClass = numTabs > 0 && numTabs <= 4 ? `grid-cols-${numTabs}` : (numTabs > 4 ? 'grid-cols-4' : 'grid-cols-1');
+
+  const anythingToSave = (editedTitle.trim() || initialTopicNameToSave) && 
+                         (hasSummaryContent || hasCodeAnalysisContent || hasStudyNotesContent);
 
 
-  // Check if anything needs saving (considering edits)
-  const anythingToSave = (editedSummary && editedSummary.trim().length > 0) ||
-                         originalCodeExists ||
-                         (editedNotes && editedNotes.trim().length > 0);
-
-
-  if (availableTabs.length === 0 && !category) { // Also check category for minimal display
+  if (availableTabs.length === 0 && !category) {
     return (
       <Card className="w-full mt-6 bg-card text-card-foreground border-border/50 shadow-md">
         <CardHeader>
@@ -323,39 +307,69 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
          <CardTitle className="text-2xl flex items-center text-foreground">
             <BookOpen className="mr-2 h-5 w-5 text-primary" /> Learning Analysis
          </CardTitle>
-         {/* Display Category as a Badge if it exists */}
           <CardDescription className="text-muted-foreground pt-1">
-            Key insights extracted from your conversation
+            Key insights extracted from your conversation.
             {category && (
                  <Badge variant="secondary" className="ml-2 w-fit flex items-center gap-1 text-xs">
                      <Folder className="h-3 w-3" /> {category}
                  </Badge>
              )}
          </CardDescription>
+
+          {/* Editable Title Section */}
+          <div className="pt-3">
+            <label htmlFor="entryTitle" className="block text-xs font-medium text-muted-foreground mb-1">Entry Title</label>
+            {isEditingTitle ? (
+                <div className="flex items-center gap-2">
+                    <Input
+                        id="entryTitle"
+                        value={editedTitle}
+                        onChange={(e) => setEditedTitle(e.target.value)}
+                        className="flex-grow h-9"
+                        placeholder="Enter entry title"
+                    />
+                    <Button onClick={handleSaveTitleEdit} size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-500 hover:bg-green-500/10">
+                        <Check className="h-4 w-4" />
+                        <span className="sr-only">Save Title</span>
+                    </Button>
+                    <Button onClick={handleCancelTitleEdit} size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:text-red-500 hover:bg-red-500/10">
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Cancel Title Edit</span>
+                    </Button>
+                </div>
+            ) : (
+                <div className="flex items-center justify-between p-2 rounded-md bg-muted/30 min-h-[36px]">
+                    <h3 className="text-md font-semibold text-foreground flex-grow break-words">
+                        {editedTitle || "Untitled Learning"}
+                    </h3>
+                    <Button onClick={handleEditTitle} variant="ghost" size="icon" className="h-7 w-7 ml-2">
+                        <Edit className="h-4 w-4" />
+                        <span className="sr-only">Edit Title</span>
+                    </Button>
+                </div>
+            )}
+          </div>
        </CardHeader>
        <CardContent>
          <Tabs defaultValue={defaultTabValue} className="w-full">
            <TabsList className={`grid w-full ${gridColsClass} mb-4 bg-muted text-muted-foreground`}>
               {availableTabs.map((tab) => (
                   <TabsTrigger key={tab.value} value={tab.value} className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-                      {/* <tab.icon className="mr-2 h-4 w-4" /> */} {/* Example uses text only */}
+                      <tab.icon className="mr-2 h-4 w-4 hidden sm:inline-block" />
                       {tab.label}
                   </TabsTrigger>
               ))}
-              {/* Fill remaining grid cols if needed */}
-               {Array.from({ length: 4 - numTabs }).map((_, i) => <div key={`placeholder-${i}`} className="hidden md:block"></div>)}
+               {Array.from({ length: Math.max(0, 4 - numTabs) }).map((_, i) => <div key={`placeholder-${i}`} className="hidden md:block"></div>)}
            </TabsList>
 
-           {/* Summary Tab Content (Combining Summary and Notes) */}
             {(hasSummaryContent || hasStudyNotesContent) && (
               <TabsContent value="summary" className="space-y-6">
-                  {/* Learning Summary Section - Editable */}
-                  {(originalSummaryExists || isEditingSummary) && (
+                  {(hasSummaryContent) && (
                       <div className="prose dark:prose-invert max-w-none">
                            <div className="flex justify-between items-center mb-2">
-                                <h3 className="text-lg font-medium m-0">Learning Summary</h3>
+                                <h3 className="text-lg font-medium m-0 text-foreground">Learning Summary</h3>
                                 {!isEditingSummary ? (
-                                    <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7" disabled={!originalSummaryExists && !isEditingSummary}>
+                                    <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7" disabled={!currentLearningSummary && !isEditingSummary}>
                                         <Edit className="h-4 w-4" />
                                         <span className="sr-only">Edit Learning Summary</span>
                                     </Button>
@@ -380,9 +394,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                     className="w-full text-sm bg-background dark:bg-background/80 border-input"
                                     placeholder="Enter learning summary..."
                                 />
-                          ) : editedSummary && editedSummary.trim().length > 0 ? (
-                              <div className="whitespace-pre-wrap text-sm">
-                                  <SimpleMarkdownRenderer content={editedSummary} />
+                          ) : currentLearningSummary && currentLearningSummary.trim().length > 0 ? (
+                              <div className="whitespace-pre-wrap text-sm bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
+                                  <SimpleMarkdownRenderer content={currentLearningSummary} />
                               </div>
                           ) : (
                               <span className="italic text-muted-foreground text-sm">No learning summary generated.</span>
@@ -390,15 +404,14 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                       </div>
                   )}
 
-                  {/* Study Notes Section - Editable */}
-                   {(originalNotesExist || isEditingNotes) && (
+                   {(hasStudyNotesContent) && (
                         <div className="prose dark:prose-invert max-w-none mt-6 pt-6 border-t border-border/50">
                             <div className="flex justify-between items-center mb-2">
-                                <h3 className="text-lg font-medium flex items-center m-0">
+                                <h3 className="text-lg font-medium flex items-center m-0 text-foreground">
                                 <Lightbulb className="mr-2 h-4 w-4" /> Study Notes
                                 </h3>
                                 {!isEditingNotes ? (
-                                    <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7" disabled={!originalNotesExist && !isEditingNotes}>
+                                    <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7" disabled={!currentStudyNotes && !isEditingNotes}>
                                         <Edit className="h-4 w-4" />
                                         <span className="sr-only">Edit Study Notes</span>
                                     </Button>
@@ -423,9 +436,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                                     className="w-full text-sm bg-background dark:bg-background/80 border-input"
                                     placeholder="Enter study notes here..."
                                 />
-                            ) : (editedNotes && editedNotes.trim().length > 0) ? (
-                                <div className="whitespace-pre-wrap text-sm">
-                                    <StudyNotesRenderer content={editedNotes} />
+                            ) : (currentStudyNotes && currentStudyNotes.trim().length > 0) ? (
+                                <div className="whitespace-pre-wrap text-sm bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
+                                    <StudyNotesRenderer content={currentStudyNotes} />
                                 </div>
                             ) : (
                                 <span className="italic text-muted-foreground text-sm">No study notes generated.</span>
@@ -433,7 +446,6 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                         </div>
                    )}
 
-                   {/* Fallback if no summary or notes */}
                    {!hasSummaryContent && !hasStudyNotesContent && (
                        <div className="text-muted-foreground text-center py-4">
                          No summary or study notes were generated for this conversation.
@@ -443,16 +455,15 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
               </TabsContent>
             )}
 
-           {/* Key Topics Tab Content */}
             {hasKeyTopicsContent && keyTopics && keyTopics.length > 0 && (
                 <TabsContent value="topics">
                     <div className="space-y-4">
-                    <h3 className="text-lg font-medium flex items-center">
-                        <Tag className="mr-2 h-4 w-4" /> Key Topics
+                    <h3 className="text-lg font-medium flex items-center text-foreground">
+                        <Tags className="mr-2 h-4 w-4" /> Key Topics
                     </h3>
                     <div className="flex flex-wrap gap-2">
                         {keyTopics.map((topic, index) => (
-                        <Badge key={index} variant="secondary" className="text-sm py-1">
+                        <Badge key={index} variant="secondary" className="text-sm py-1 px-2.5">
                             {topic}
                         </Badge>
                         ))}
@@ -469,18 +480,17 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
              )}
 
 
-            {/* Concept Map Tab Content */}
             {hasConceptsContent && conceptsMap && (
                 <TabsContent value="concepts">
                     <div className="space-y-4">
-                    <h3 className="text-lg font-medium flex items-center">
+                    <h3 className="text-lg font-medium flex items-center text-foreground">
                         <Map className="mr-2 h-4 w-4" /> Concept Map
                     </h3>
-                    {/* Assuming conceptsMap is a string for now based on example */}
-                    <div className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md">
-                        {/* Render the concept map string - adjust if it's an object later */}
-                        {typeof conceptsMap === 'string' ? conceptsMap : JSON.stringify(conceptsMap, null, 2)}
-                    </div>
+                     <ScrollArea className="h-[300px] w-full">
+                        <div className="whitespace-pre-wrap text-sm bg-muted/50 dark:bg-muted/20 p-4 rounded-md border border-border/50">
+                            {typeof conceptsMap === 'string' ? conceptsMap : JSON.stringify(conceptsMap, null, 2)}
+                        </div>
+                    </ScrollArea>
                     </div>
                 </TabsContent>
             )}
@@ -492,30 +502,40 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                 </TabsContent>
             )}
 
-           {/* Code Analysis Tab Content */}
             {hasCodeAnalysisContent && codeAnalysis && (
                  <TabsContent value="code">
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-medium flex items-center">
+                    <div className="space-y-6"> {/* Increased spacing */}
+                        <h3 className="text-lg font-medium flex items-center text-foreground">
                         <Code className="mr-2 h-4 w-4" /> Code Analysis
                         </h3>
-                        {/* Render learned concept */}
                         {codeAnalysis.learnedConcept && (
-                             <div className="bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
-                                <h4 className="text-sm font-semibold mb-1 text-secondary-foreground">Concept:</h4>
-                                <p className="whitespace-pre-wrap text-sm text-foreground">{codeAnalysis.learnedConcept}</p>
+                             <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
+                                <h4 className="text-sm font-semibold mb-1.5 text-secondary-foreground">Concept Learned:</h4>
+                                <p className="whitespace-pre-wrap text-sm text-foreground/90">{codeAnalysis.learnedConcept}</p>
                             </div>
                         )}
-                        {/* Render code snippet */}
                         {codeAnalysis.finalCodeSnippet && (
-                            <div className="bg-muted p-4 rounded-md font-mono text-sm overflow-x-auto border border-border/50">
-                                 {codeAnalysis.codeLanguage && <Badge variant="secondary" className="float-right text-xs mb-2">{codeAnalysis.codeLanguage}</Badge>}
-                                <pre><code className={`language-${codeAnalysis.codeLanguage || ''}`}>{codeAnalysis.finalCodeSnippet}</code></pre>
-                            </div>
+                            <Card className="bg-muted/10 dark:bg-muted/5 overflow-hidden border-border/50">
+                                <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/10 border-b border-border/50">
+                                    <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
+                                        <CardTitle className="text-sm font-medium text-secondary-foreground">
+                                            Final Code Example
+                                        </CardTitle>
+                                        {codeAnalysis.codeLanguage && <Badge variant="outline" size="sm" className="mt-1 md:mt-0 text-xs">{codeAnalysis.codeLanguage}</Badge>}
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    <ScrollArea className="max-h-[400px] w-full">
+                                        <pre className="p-4 text-xs text-foreground whitespace-pre-wrap break-words font-mono">
+                                            <code>{codeAnalysis.finalCodeSnippet}</code>
+                                        </pre>
+                                    </ScrollArea>
+                                </CardContent>
+                            </Card>
                         )}
-                         {!codeAnalysis.learnedConcept && !codeAnalysis.finalCodeSnippet && (
+                         {!codeAnalysis.learnedConcept && !(codeAnalysis.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0) && (
                               <div className="text-muted-foreground text-center py-4">
-                                No specific code analysis generated.
+                                No specific code insights were generated.
                               </div>
                          )}
                     </div>
@@ -528,11 +548,8 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                      </div>
                  </TabsContent>
              )}
-
-
          </Tabs>
        </CardContent>
-       {/* Save All Insights Button */}
        <CardFooter className="border-t border-border/50 pt-4">
          <Button
              onClick={handleSaveAllInsights}
@@ -552,3 +569,4 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
      </Card>
   );
 }
+
