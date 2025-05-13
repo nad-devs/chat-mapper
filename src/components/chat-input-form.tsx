@@ -7,10 +7,8 @@ import { useFormStatus } from 'react-dom';
 import { processConversation, type ProcessedConversationResult } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
-// Removed useToast import as it's not used here anymore
+import { Label } from '@/components/ui/label'; // Import Label
+import { Loader2, Send } from 'lucide-react'; // Import Send icon
 
 interface ChatInputFormProps {
   onProcessingStart: () => void;
@@ -21,7 +19,7 @@ interface ChatInputFormProps {
 
 // Initial state matches the ProcessedConversationResult type
 const initialState: ProcessedConversationResult = {
-    topicsSummary: null,
+    learningSummary: null, // Changed from topicsSummary
     keyTopics: null,
     category: null,
     conceptsMap: null,
@@ -48,7 +46,15 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
     // Or if the state contains an error (indicating completion, even if failed)
     if (!isActionPending && (state !== actualInitialState || (state && state.error))) {
         console.log('[Form Effect] Action state received:', state);
-        onProcessingComplete(state); // Pass the entire state object
+         // Ensure state is serializable before passing to handler
+        try {
+            const serializableState = JSON.parse(JSON.stringify(state));
+            onProcessingComplete(serializableState); // Pass the entire state object
+        } catch (stringifyError) {
+            console.error('[Form Effect] Error serializing action state:', stringifyError);
+            // Handle the error appropriately, e.g., show a generic error message
+             onProcessingComplete({ ...initialState, error: "Failed to process results." });
+        }
     }
     // Intentionally limit deps to avoid loop if actualInitialState changes unnecessarily
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,45 +70,39 @@ export function ChatInputForm({ onProcessingStart, onProcessingComplete, isProce
 
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Input Conversation</CardTitle>
-        <CardDescription>Paste your full ChatGPT conversation below. After analysis, you can review insights and save the generated notes.</CardDescription>
-      </CardHeader>
-      <form
-        ref={formRef}
-        action={formAction} // Use the action returned by useActionState
-        onSubmit={handleFormSubmit}
-      >
-        <fieldset disabled={isDisabled} className="group">
-            <CardContent>
-            <div className="grid w-full gap-1.5">
-                <Label htmlFor="conversationText">Conversation Text</Label>
-                <Textarea
-                placeholder="Paste your conversation here..."
-                id="conversationText"
-                name="conversationText"
-                rows={15}
-                required
-                // Use defaultValue from the *current* state to reflect retries/initial text
-                // Use key={initialText} hack to force re-render if initialText changes, clearing manual edits
-                key={initialText}
-                defaultValue={state?.originalConversationText || ''}
-                aria-invalid={!!state?.error && !isActionPending && !isProcessing} // Show invalid only if error exists and not pending/processing
-                aria-describedby="conversation-error-hint"
-                className="group-disabled:opacity-50"
-                />
-                 <p id="conversation-error-hint" className="sr-only">
-                    If there is an error, it will be displayed below this form after processing.
-                 </p>
-            </div>
-            </CardContent>
-            <CardFooter>
-                 <SubmitButton isDisabled={isDisabled} />
-            </CardFooter>
-        </fieldset>
-      </form>
-    </Card>
+    // Use the structure from the user's example code
+    <form
+      ref={formRef}
+      action={formAction} // Use the action returned by useActionState
+      onSubmit={handleFormSubmit}
+      className="space-y-4"
+    >
+      <fieldset disabled={isDisabled} className="group space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="conversationText" className="block text-sm font-medium text-foreground">
+            Paste your ChatGPT conversation
+          </Label>
+          <Textarea
+            placeholder="Paste your ChatGPT conversation here..."
+            id="conversationText"
+            name="conversationText"
+            rows={15}
+            required
+            key={initialText}
+            defaultValue={state?.originalConversationText || ''}
+            aria-invalid={!!state?.error && !isActionPending && !isProcessing}
+            aria-describedby="conversation-error-hint"
+            className="min-h-[200px] resize-y group-disabled:opacity-50"
+          />
+          <p id="conversation-error-hint" className="sr-only">
+            If there is an error, it will be displayed below this form after processing.
+          </p>
+        </div>
+        <div className="flex justify-end">
+          <SubmitButton isDisabled={isDisabled} />
+        </div>
+      </fieldset>
+    </form>
   );
 }
 
@@ -113,8 +113,8 @@ function SubmitButton({ isDisabled }: { isDisabled: boolean }) {
 
     return (
          <Button type="submit" disabled={actualDisabled}>
-            {actualDisabled ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {actualDisabled ? 'Processing...' : 'Analyze Conversation'}
+            {actualDisabled ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" /> }
+            {actualDisabled ? 'Analyzing...' : 'Analyze Conversation'}
         </Button>
     )
 }
