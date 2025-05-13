@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -11,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
-import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive, Edit, Save, X, Tag } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive, Edit, Save, X, Tag, Loader2 } from 'lucide-react'; // Added Loader2
 import Link from 'next/link';
 import { format, isSameDay } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
@@ -493,4 +494,5 @@ export default function LearningsPage() {
     </main>
   );
 }
+
 
