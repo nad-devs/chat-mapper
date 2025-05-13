@@ -319,14 +319,16 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
          <CardTitle className="text-2xl flex items-center text-foreground">
             <BookOpen className="mr-2 h-5 w-5 text-primary" /> Learning Analysis
          </CardTitle>
-          <CardDescription className="text-muted-foreground pt-1">
-            Key insights extracted from your conversation.
+         <div className="flex items-center pt-1">
+            <CardDescription className="text-muted-foreground">
+                Key insights extracted from your conversation.
+            </CardDescription>
             {category && (
-                 <Badge variant="secondary" className="ml-2 w-fit flex items-center gap-1 text-xs">
-                     <Folder className="h-3 w-3" /> {category}
-                 </Badge>
-             )}
-         </CardDescription>
+                <Badge variant="secondary" className="ml-2 w-fit flex items-center gap-1 text-xs shrink-0">
+                    <Folder className="h-3 w-3" /> {category}
+                </Badge>
+            )}
+         </div>
 
           {/* Editable Title Section */}
           <div className="pt-3">
@@ -581,3 +583,4 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
      </Card>
   );
 }
+
