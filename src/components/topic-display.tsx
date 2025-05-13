@@ -28,11 +28,45 @@ interface TopicDisplayProps {
 // Simple renderer for plain text or basic markdown (like bullet points)
 const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
   const lines = content.split('\n');
-  const elements = lines.map((line, index) => {
+  let elements: React.ReactNode[] = [];
+  let inCodeBlock = false;
+  let currentCodeBlockLines: string[] = [];
+  let codeLanguage = '';
+
+  lines.forEach((line, index) => {
     const trimmedLine = line.trim();
 
+    // Handle code block delimiters
+    if (trimmedLine.startsWith('```')) {
+      if (inCodeBlock) {
+        // End of code block
+        elements.push(
+          <pre key={`code-block-${index}`} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border">
+            <code className={`language-${codeLanguage} font-mono`}>{currentCodeBlockLines.join('\n').trimEnd()}</code>
+          </pre>
+        );
+        inCodeBlock = false;
+        currentCodeBlockLines = [];
+        codeLanguage = '';
+      } else {
+        // Start of code block
+        inCodeBlock = true;
+        const langMatch = trimmedLine.match(/^```(\w*)/);
+        if (langMatch && langMatch[1]) {
+          codeLanguage = langMatch[1];
+        }
+      }
+      return; // Skip the delimiter line itself
+    }
+
+    // If inside a code block, accumulate lines
+    if (inCodeBlock) {
+      currentCodeBlockLines.push(line);
+      return;
+    }
+
     // Render inline code `` `code` ``
-    const renderInlineCode = (text: string) => {
+    const renderInlineCode = (text: string): React.ReactNode[] => {
         const parts = text.split(/(`[^`]+`)/);
         return parts.map((part, partIndex) => {
             if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
@@ -43,7 +77,7 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     };
 
      // Render bold **text**
-    const renderBold = (text: string) => {
+    const renderBold = (text: string): React.ReactNode[] => {
         const parts = text.split(/(\*\*.*?\*\*)/g);
         return parts.map((part, partIndex) => {
         if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
@@ -54,61 +88,48 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
     };
 
     if (trimmedLine.startsWith('### ')) {
-      return <h3 key={index} className="text-base font-semibold mt-4 mb-2 text-primary">{renderBold(trimmedLine.substring(4))}</h3>;
-    }
-    if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
-      return <li key={index} className="ml-5 list-disc">{renderBold(trimmedLine.substring(2))}</li>;
-    }
-    if (/^\d+\.\s/.test(trimmedLine)) {
+      elements.push(<h3 key={index} className="text-base font-semibold mt-4 mb-2 text-primary">{renderBold(trimmedLine.substring(4))}</h3>);
+    } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+      elements.push(<li key={index} className="ml-5 list-disc">{renderBold(trimmedLine.substring(2))}</li>);
+    } else if (/^\d+\.\s/.test(trimmedLine)) {
          const match = trimmedLine.match(/^(\d+\.\s)(.*)/);
          if (match) {
-            return <li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>;
+            elements.push(<li key={index} value={parseInt(match[1], 10)} className="ml-5">{renderBold(match[2])}</li>);
+         } else {
+             // Handle case where regex matches but capturing fails (fallback)
+             elements.push(<p key={index} className="mb-2 last:mb-0">{renderBold(line)}</p>);
          }
+    } else if (trimmedLine === '') {
+        // Treat consecutive empty lines as a single break, but allow one for spacing
+        if (elements.length > 0 && elements[elements.length - 1]?.type !== 'br') {
+            elements.push(<br key={index} />);
+        }
+    } else {
+        elements.push(<p key={index} className="mb-2 last:mb-0">{renderBold(line)}</p>);
     }
-     if (trimmedLine.startsWith('```')) {
-         let codeContent = '';
-         let language = '';
-         const langMatch = trimmedLine.match(/^```(\w*)/);
-         if (langMatch && langMatch[1]) {
-             language = langMatch[1];
-         }
-         let inCodeBlock = true;
-         let codeEndIndex = lines.findIndex((l, i) => i > index && l.trim() === '```');
-         if (codeEndIndex === -1) codeEndIndex = lines.length;
-
-         codeContent = lines.slice(index + 1, codeEndIndex).join('\n');
-         // To prevent rendering already processed code block lines as paragraphs
-         for (let i = index + 1; i < codeEndIndex; i++) {
-             lines[i] = '```processed_code_line```'; // Mark as processed
-         }
-
-         return (
-             <pre key={index} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border">
-                 <code className={`language-${language} font-mono`}>{codeContent.trimEnd()}</code>
-             </pre>
-         );
-     }
-     // Skip lines that were part of a processed code block
-     if (trimmedLine === '```processed_code_line```') {
-        return null;
-     }
-
-    if (trimmedLine === '') {
-        return <br key={index} />;
-    }
-    return <p key={index} className="mb-2 last:mb-0">{renderBold(trimmedLine)}</p>;
   });
 
+   // Ensure any unfinished code block is rendered
+    if (inCodeBlock && currentCodeBlockLines.length > 0) {
+         elements.push(
+          <pre key={`code-block-final`} className="my-2 p-3 text-xs bg-muted text-foreground whitespace-pre-wrap break-words rounded-md border">
+            <code className={`language-${codeLanguage} font-mono`}>{currentCodeBlockLines.join('\n').trimEnd()}</code>
+          </pre>
+        );
+    }
+
+   // Group list items correctly
    const groupedElements: React.ReactNode[] = [];
    let currentList: React.ReactNode[] = [];
    let listType: 'ul' | 'ol' | null = null;
 
    elements.filter(el => el !== null).forEach((el, index) => { // Filter out null elements
      const isListItem = React.isValidElement(el) && el.type === 'li';
-     
+
      if (isListItem) {
-        const currentListType = el.props.value === undefined ? 'ul' : 'ol';
+        const currentListType = (el.props as any).value === undefined ? 'ul' : 'ol';
         if (listType && listType !== currentListType) {
+         // Close previous list if type changes
          const ListComponent = listType === 'ol' ? 'ol' : 'ul';
          const listClass = listType === 'ol' ? "list-decimal" : "list-disc";
          groupedElements.push(<ListComponent key={`list-${index}-prev`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
@@ -116,30 +137,38 @@ const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
          listType = null;
         }
         if (!listType) {
-         listType = currentListType;
+         listType = currentListType; // Start a new list
         }
        currentList.push(el);
      } else {
        if (currentList.length > 0 && listType) {
+          // Close current list if a non-list item is encountered
          const ListComponent = listType === 'ol' ? 'ol' : 'ul';
          const listClass = listType === 'ol' ? "list-decimal" : "list-disc";
          groupedElements.push(<ListComponent key={`list-${index}`} className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
          currentList = [];
          listType = null;
        }
-       // Ensure only valid elements are pushed
+       // Add the non-list item
        if (React.isValidElement(el)) {
-            groupedElements.push(el);
+            // Skip empty breaks if they are the first element or follow another break
+            if (el.type === 'br' && (groupedElements.length === 0 || groupedElements[groupedElements.length-1]?.type === 'br')) {
+                 // Skip
+            } else {
+                 groupedElements.push(el);
+            }
        }
      }
    });
 
+   // Close any remaining list at the end
    if (currentList.length > 0 && listType) {
      const ListComponent = listType === 'ol' ? 'ol' : 'ul';
      const listClass = listType === 'ol' ? "list-decimal" : "list-disc";
      groupedElements.push(<ListComponent key="list-last" className={`space-y-1 mb-2 pl-5 ${listClass}`}>{currentList}</ListComponent>);
    }
 
+  // Apply base styling for readability
   return <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none prose-headings:text-primary prose-p:text-foreground/90 prose-li:text-foreground/90 prose-strong:text-foreground prose-code:bg-muted prose-code:text-foreground prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted prose-pre:text-foreground prose-pre:border prose-pre:rounded-md prose-pre:p-3">{groupedElements}</div>;
 };
 
@@ -158,25 +187,26 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   // --- Generate initial topic name based on new logic ---
   const initialTopicNameToSave = React.useMemo(() => {
-    if (mainProblemOrTopicName) {
-        return String(mainProblemOrTopicName);
-    }
-    if (keyTopics && keyTopics.length > 0) {
-        const problemLikeTopic = keyTopics.find(topic =>
-            topic.toLowerCase().includes("problem") ||
-            topic.toLowerCase().includes("challenge") ||
-            topic.toLowerCase().includes("leetcode")
-        );
-        if (problemLikeTopic) return String(problemLikeTopic);
-        return String(keyTopics[0]); 
-    }
-    if (codeAnalysis?.learnedConcept) {
-        return String(codeAnalysis.learnedConcept);
-    }
-    if (category) {
-        return String(category);
-    }
-    return "Untitled Learning";
+      if (mainProblemOrTopicName) {
+          return String(mainProblemOrTopicName);
+      }
+      // Keep previous logic as fallback if specific problem name isn't found
+      if (keyTopics && keyTopics.length > 0) {
+          const problemLikeTopic = keyTopics.find(topic =>
+              topic.toLowerCase().includes("problem") ||
+              topic.toLowerCase().includes("challenge") ||
+              topic.toLowerCase().includes("leetcode")
+          );
+          if (problemLikeTopic) return String(problemLikeTopic);
+          return String(keyTopics[0]);
+      }
+      if (codeAnalysis?.learnedConcept) {
+          return String(codeAnalysis.learnedConcept);
+      }
+      if (category) {
+          return String(category);
+      }
+      return "Untitled Learning";
   }, [mainProblemOrTopicName, keyTopics, codeAnalysis?.learnedConcept, category]);
 
   // Initialize or update editedTitle when results change or editing stops
@@ -213,6 +243,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   const handleSaveAllInsights = () => {
     const titleToSave = editedTitle.trim() || initialTopicNameToSave;
+    // Use the *current* state of the potentially edited fields
     const summaryToSave = editedSummary;
     const codeSnippetToSave = results.codeAnalysis?.finalCodeSnippet;
     const codeLangToSave = results.codeAnalysis?.codeLanguage;
@@ -223,6 +254,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     if (category) {
       formData.append('category', category);
     }
+    // Only append if there's actual content (after potential edits)
     if (summaryToSave && summaryToSave.trim().length > 0) {
       formData.append('learningSummary', summaryToSave);
     }
@@ -232,12 +264,15 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
         formData.append('codeLanguage', codeLangToSave);
       }
     }
+     // Append study notes if they exist (after potential edits)
     if (notesToSave && notesToSave.trim().length > 0) {
       formData.append('studyNotesContent', notesToSave);
     }
 
+
+    // Check if there's *anything* to save
     if (!formData.has('learningSummary') && !formData.has('codeSnippetContent') && !formData.has('studyNotesContent')) {
-        toast({ title: "Nothing to Save", description: "No content available to save from this analysis." });
+        toast({ title: "Nothing to Save", description: "No summary, code, or notes available to save." });
         return;
     }
 
@@ -248,9 +283,9 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
 
   // --- Handlers for Editing ---
   const handleEditTitle = () => setIsEditingTitle(true);
-  const handleSaveTitleEdit = () => setIsEditingTitle(false); 
+  const handleSaveTitleEdit = () => setIsEditingTitle(false);
   const handleCancelTitleEdit = () => {
-    setEditedTitle(initialTopicNameToSave); 
+    setEditedTitle(initialTopicNameToSave);
     setIsEditingTitle(false);
   };
 
@@ -269,8 +304,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   };
 
   // --- Content Checks ---
+  // Use the potentially edited versions for checks
   const currentLearningSummary = isEditingSummary ? editedSummary : learningSummary;
   const currentStudyNotes = isEditingNotes ? editedNotes : studyNotes;
+  const currentCodeSnippet = results.codeAnalysis?.finalCodeSnippet; // Code snippet is not editable here
 
   const hasSummaryContent = !!currentLearningSummary && currentLearningSummary.trim().length > 0;
   const hasKeyTopicsContent = keyTopics && keyTopics.length > 0;
@@ -279,7 +316,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     (conceptsMap.subtopics && conceptsMap.subtopics.length > 0) ||
     (conceptsMap.relationships && conceptsMap.relationships.length > 0)
   );
-  const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || (codeAnalysis.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0));
+  const hasCodeAnalysisContent = codeAnalysis && (codeAnalysis.learnedConcept || (currentCodeSnippet && currentCodeSnippet.trim().length > 0));
   const hasStudyNotesContent = !!currentStudyNotes && currentStudyNotes.trim().length > 0;
 
   const availableTabs = [
@@ -290,13 +327,16 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
   ].filter(Boolean) as { value: string, label: string, icon: React.ElementType }[];
 
   const numTabs = availableTabs.length;
-  const gridColsClass = numTabs > 0 && numTabs <= 4 ? `grid-cols-${numTabs}` : (numTabs > 4 ? 'grid-cols-4' : 'grid-cols-1');
-
-  const anythingToSave = (editedTitle.trim() || initialTopicNameToSave) && 
-                         (hasSummaryContent || hasCodeAnalysisContent || hasStudyNotesContent);
+  // Ensure gridColsClass is valid Tailwind class
+  const gridColsClass = `grid-cols-${Math.max(1, Math.min(4, numTabs))}`;
 
 
-  if (availableTabs.length === 0 && !category) {
+  // Determine if there is *anything* to save (consider edited title and content)
+  const anythingToSave = (editedTitle.trim().length > 0) &&
+                         (hasSummaryContent || (hasCodeAnalysisContent && !!currentCodeSnippet) || hasStudyNotesContent);
+
+  if (availableTabs.length === 0 && !category && !hasCodeAnalysisContent && !hasStudyNotesContent) {
+      // Added checks for code/notes content that might not be in tabs but still exist
     return (
       <Card className="w-full mt-6 bg-card text-card-foreground border-border/50 shadow-md">
         <CardHeader>
@@ -311,7 +351,7 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
     );
   }
 
-  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : 'summary';
+  const defaultTabValue = availableTabs.length > 0 ? availableTabs[0].value : (hasCodeAnalysisContent ? 'code' : (hasStudyNotesContent ? 'summary' : ''));
 
   return (
      <Card className="w-full mt-6 shadow-md border-border/50">
@@ -320,9 +360,10 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
             <BookOpen className="mr-2 h-5 w-5 text-primary" /> Learning Analysis
          </CardTitle>
          <div className="flex items-center pt-1">
-            <CardDescription className="text-muted-foreground">
+             {/* Use a span instead of p for better layout control */}
+             <span className="text-sm text-muted-foreground pt-1">
                 Key insights extracted from your conversation.
-            </CardDescription>
+             </span>
             {category && (
                 <Badge variant="secondary" className="ml-2 w-fit flex items-center gap-1 text-xs shrink-0">
                     <Folder className="h-3 w-3" /> {category}
@@ -353,10 +394,11 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
                 </div>
             ) : (
                 <div className="flex items-center justify-between p-2 rounded-md bg-muted/30 dark:bg-muted/10 min-h-[36px]">
+                     {/* Make title text have better contrast */}
                     <h3 className="text-md font-semibold text-foreground flex-grow break-words">
                         {editedTitle || "Untitled Learning"}
                     </h3>
-                    <Button onClick={handleEditTitle} variant="ghost" size="icon" className="h-7 w-7 ml-2">
+                    <Button onClick={handleEditTitle} variant="ghost" size="icon" className="h-7 w-7 ml-2 text-muted-foreground hover:text-foreground">
                         <Edit className="h-4 w-4" />
                         <span className="sr-only">Edit Title</span>
                     </Button>
@@ -365,222 +407,239 @@ export function TopicDisplay({ results }: TopicDisplayProps) {
           </div>
        </CardHeader>
        <CardContent>
-         <Tabs defaultValue={defaultTabValue} className="w-full">
-           <TabsList className={`grid w-full ${gridColsClass} mb-4 bg-muted text-muted-foreground`}>
-              {availableTabs.map((tab) => (
-                  <TabsTrigger key={tab.value} value={tab.value} className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
-                      <tab.icon className="mr-2 h-4 w-4 hidden sm:inline-block" />
-                      {tab.label}
-                  </TabsTrigger>
-              ))}
-               {Array.from({ length: Math.max(0, 4 - numTabs) }).map((_, i) => <div key={`placeholder-${i}`} className="hidden md:block"></div>)}
-           </TabsList>
+         {availableTabs.length > 0 && (
+             <Tabs defaultValue={defaultTabValue} className="w-full">
+               <TabsList className={`grid w-full ${gridColsClass} mb-4 bg-muted text-muted-foreground`}>
+                  {availableTabs.map((tab) => (
+                      <TabsTrigger key={tab.value} value={tab.value} className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                          <tab.icon className="mr-2 h-4 w-4 hidden sm:inline-block" />
+                          {tab.label}
+                      </TabsTrigger>
+                  ))}
+                   {/* Add placeholder divs if less than 4 tabs for consistent grid layout */}
+                   {Array.from({ length: Math.max(0, 4 - numTabs) }).map((_, i) => <div key={`placeholder-${i}`} className="hidden md:block p-1"></div>)}
+               </TabsList>
 
-            {(hasSummaryContent || hasStudyNotesContent) && (
-              <TabsContent value="summary" className="space-y-6">
-                  {(hasSummaryContent) && (
-                      <div className="prose dark:prose-invert max-w-none">
-                           <div className="flex justify-between items-center mb-2">
-                                <h3 className="text-lg font-medium m-0 text-foreground">Learning Summary</h3>
-                                {!isEditingSummary ? (
-                                    <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7" disabled={!currentLearningSummary && !isEditingSummary}>
-                                        <Edit className="h-4 w-4" />
-                                        <span className="sr-only">Edit Learning Summary</span>
-                                    </Button>
-                                ) : (
-                                    <div className="flex gap-1">
-                                        <Button variant="ghost" size="icon" onClick={handleSaveSummaryEdit} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
-                                            <Save className="h-4 w-4" />
-                                            <span className="sr-only">Save Summary Edit</span>
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={handleCancelSummaryEdit} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
-                                            <X className="h-4 w-4" />
-                                            <span className="sr-only">Cancel Edit Summary</span>
-                                        </Button>
-                                    </div>
-                                )}
-                           </div>
-                          {isEditingSummary ? (
-                                <Textarea
-                                    value={editedSummary}
-                                    onChange={(e) => setEditedSummary(e.target.value)}
-                                    rows={5}
-                                    className="w-full text-sm bg-background dark:bg-background/80 border-input"
-                                    placeholder="Enter learning summary..."
-                                />
-                          ) : currentLearningSummary && currentLearningSummary.trim().length > 0 ? (
-                              <div className="whitespace-pre-wrap text-sm bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
-                                  <SimpleMarkdownRenderer content={currentLearningSummary} />
-                              </div>
-                          ) : (
-                              <span className="italic text-muted-foreground text-sm">No learning summary generated.</span>
-                          )}
-                      </div>
-                  )}
-
-                   {(hasStudyNotesContent) && (
-                        <div className="prose dark:prose-invert max-w-none mt-6 pt-6 border-t border-border/50">
-                            <div className="flex justify-between items-center mb-2">
-                                <h3 className="text-lg font-medium flex items-center m-0 text-foreground">
-                                <Lightbulb className="mr-2 h-4 w-4" /> Study Notes
-                                </h3>
-                                {!isEditingNotes ? (
-                                    <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7" disabled={!currentStudyNotes && !isEditingNotes}>
-                                        <Edit className="h-4 w-4" />
-                                        <span className="sr-only">Edit Study Notes</span>
-                                    </Button>
-                                ) : (
-                                    <div className="flex gap-1">
-                                        <Button variant="ghost" size="icon" onClick={handleSaveNotesEdit} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
-                                            <Save className="h-4 w-4" />
-                                            <span className="sr-only">Save Notes Edit</span>
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={handleCancelNotesEdit} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
-                                            <X className="h-4 w-4" />
-                                            <span className="sr-only">Cancel Edit Notes</span>
-                                        </Button>
-                                    </div>
-                                )}
-                           </div>
-                           {isEditingNotes ? (
-                                <Textarea
-                                    value={editedNotes}
-                                    onChange={(e) => setEditedNotes(e.target.value)}
-                                    rows={10}
-                                    className="w-full text-sm bg-background dark:bg-background/80 border-input"
-                                    placeholder="Enter study notes here..."
-                                />
-                            ) : (currentStudyNotes && currentStudyNotes.trim().length > 0) ? (
-                                <div className="whitespace-pre-wrap text-sm bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
-                                    <StudyNotesRenderer content={currentStudyNotes} />
-                                </div>
-                            ) : (
-                                <span className="italic text-muted-foreground text-sm">No study notes generated.</span>
-                            )}
-                        </div>
-                   )}
-
-                   {!hasSummaryContent && !hasStudyNotesContent && (
-                       <div className="text-muted-foreground text-center py-4">
-                         No summary or study notes were generated for this conversation.
-                       </div>
-                   )}
-
-              </TabsContent>
-            )}
-
-            {hasKeyTopicsContent && keyTopics && keyTopics.length > 0 && (
-                <TabsContent value="topics">
-                    <div className="space-y-4">
-                    <h3 className="text-lg font-medium flex items-center text-foreground">
-                        <Tags className="mr-2 h-4 w-4" /> Key Topics
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                        {keyTopics.map((topic, index) => (
-                        <Badge key={index} variant="secondary" className="text-sm py-1 px-2.5">
-                            {topic}
-                        </Badge>
-                        ))}
-                    </div>
-                    </div>
-                </TabsContent>
-            )}
-             {hasKeyTopicsContent && (!keyTopics || keyTopics.length === 0) && (
-                 <TabsContent value="topics">
-                      <div className="text-muted-foreground text-center py-4">
-                         No key topics were identified in this conversation.
-                       </div>
-                 </TabsContent>
-             )}
-
-
-            {hasConceptsContent && conceptsMap && (
-                <TabsContent value="concepts">
-                    <div className="space-y-4">
-                    <h3 className="text-lg font-medium flex items-center text-foreground">
-                        <Map className="mr-2 h-4 w-4" /> Concept Map
-                    </h3>
-                     <ScrollArea className="h-[300px] w-full">
-                        <div className="whitespace-pre-wrap text-sm bg-muted/50 dark:bg-muted/20 p-4 rounded-md border border-border/50">
-                            {typeof conceptsMap === 'string' ? conceptsMap : JSON.stringify(conceptsMap, null, 2)}
-                        </div>
-                    </ScrollArea>
-                    </div>
-                </TabsContent>
-            )}
-             {hasConceptsContent && !conceptsMap && (
-                <TabsContent value="concepts">
-                    <div className="text-muted-foreground text-center py-4">
-                         No concept map was generated for this conversation.
-                    </div>
-                </TabsContent>
-            )}
-
-            {hasCodeAnalysisContent && codeAnalysis && (
-                 <TabsContent value="code">
-                    <div className="space-y-6"> 
-                        <h3 className="text-lg font-medium flex items-center text-foreground">
-                        <Code className="mr-2 h-4 w-4" /> Code Analysis
-                        </h3>
-                        {codeAnalysis.learnedConcept && (
-                             <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
-                                <h4 className="text-sm font-semibold mb-1.5 text-foreground dark:text-foreground/90">Concept Learned:</h4>
-                                <p className="whitespace-pre-wrap text-sm text-foreground/90 dark:text-foreground/80">{codeAnalysis.learnedConcept}</p>
-                            </div>
-                        )}
-                        {codeAnalysis.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0 && (
-                            <Card className="bg-muted/10 dark:bg-muted/5 overflow-hidden border-border/50">
-                                <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/10 border-b border-border/50">
-                                    <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
-                                        <CardTitle className="text-sm font-medium text-secondary-foreground">
-                                            Final Code Example
-                                        </CardTitle>
-                                        {codeAnalysis.codeLanguage && <Badge variant="outline" size="sm" className="mt-1 md:mt-0 text-xs">{codeAnalysis.codeLanguage}</Badge>}
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="p-0">
-                                    <ScrollArea className="max-h-[400px] w-full">
-                                        <pre className="p-4 text-xs text-foreground whitespace-pre-wrap break-words font-mono">
-                                            <code>{codeAnalysis.finalCodeSnippet}</code>
-                                        </pre>
-                                    </ScrollArea>
-                                </CardContent>
-                            </Card>
-                        )}
-                         {!codeAnalysis.learnedConcept && !(codeAnalysis.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0) && (
-                              <div className="text-muted-foreground text-center py-4">
-                                No specific code insights were generated.
+                {/* Summary & Notes Tab Content */}
+                 {(hasSummaryContent || hasStudyNotesContent) && (
+                     <TabsContent value="summary" className="space-y-6">
+                         {/* Learning Summary Section */}
+                         {(hasSummaryContent) && (
+                              <div className="prose dark:prose-invert max-w-none">
+                                  <div className="flex justify-between items-center mb-2">
+                                      <h3 className="text-lg font-medium m-0 text-foreground">Learning Summary</h3>
+                                      {!isEditingSummary ? (
+                                          <Button variant="ghost" size="icon" onClick={handleEditSummary} className="h-7 w-7 text-muted-foreground hover:text-foreground" disabled={!currentLearningSummary}>
+                                              <Edit className="h-4 w-4" />
+                                              <span className="sr-only">Edit Learning Summary</span>
+                                          </Button>
+                                      ) : (
+                                          <div className="flex gap-1">
+                                              <Button variant="ghost" size="icon" onClick={handleSaveSummaryEdit} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                                                  <Save className="h-4 w-4" />
+                                                  <span className="sr-only">Save Summary Edit</span>
+                                              </Button>
+                                              <Button variant="ghost" size="icon" onClick={handleCancelSummaryEdit} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                                                  <X className="h-4 w-4" />
+                                                  <span className="sr-only">Cancel Edit Summary</span>
+                                              </Button>
+                                          </div>
+                                      )}
+                                  </div>
+                                  {isEditingSummary ? (
+                                      <Textarea
+                                          value={editedSummary}
+                                          onChange={(e) => setEditedSummary(e.target.value)}
+                                          rows={5}
+                                          className="w-full text-sm bg-background dark:bg-background/80 border-input"
+                                          placeholder="Enter learning summary..."
+                                      />
+                                  ) : (
+                                      <div className="whitespace-pre-wrap text-sm bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
+                                          <SimpleMarkdownRenderer content={currentLearningSummary!} />
+                                      </div>
+                                  )}
                               </div>
                          )}
-                    </div>
-                </TabsContent>
-            )}
-             {hasCodeAnalysisContent && !codeAnalysis && (
-                 <TabsContent value="code">
-                     <div className="text-muted-foreground text-center py-4">
-                         No code analysis was generated for this conversation.
-                     </div>
-                 </TabsContent>
-             )}
-         </Tabs>
+
+                         {/* Study Notes Section */}
+                         {(hasStudyNotesContent) && (
+                              <div className="prose dark:prose-invert max-w-none mt-6 pt-6 border-t border-border/50">
+                                  <div className="flex justify-between items-center mb-2">
+                                      <h3 className="text-lg font-medium flex items-center m-0 text-foreground">
+                                          <Lightbulb className="mr-2 h-4 w-4" /> Study Notes
+                                      </h3>
+                                      {!isEditingNotes ? (
+                                          <Button variant="ghost" size="icon" onClick={handleEditNotes} className="h-7 w-7 text-muted-foreground hover:text-foreground" disabled={!currentStudyNotes}>
+                                              <Edit className="h-4 w-4" />
+                                              <span className="sr-only">Edit Study Notes</span>
+                                          </Button>
+                                      ) : (
+                                          <div className="flex gap-1">
+                                              <Button variant="ghost" size="icon" onClick={handleSaveNotesEdit} className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                                                  <Save className="h-4 w-4" />
+                                                  <span className="sr-only">Save Notes Edit</span>
+                                              </Button>
+                                              <Button variant="ghost" size="icon" onClick={handleCancelNotesEdit} className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                                                  <X className="h-4 w-4" />
+                                                  <span className="sr-only">Cancel Edit Notes</span>
+                                              </Button>
+                                          </div>
+                                      )}
+                                  </div>
+                                  {isEditingNotes ? (
+                                      <Textarea
+                                          value={editedNotes}
+                                          onChange={(e) => setEditedNotes(e.target.value)}
+                                          rows={10}
+                                          className="w-full text-sm bg-background dark:bg-background/80 border-input"
+                                          placeholder="Enter study notes here..."
+                                      />
+                                  ) : (
+                                      <div className="whitespace-pre-wrap text-sm bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50">
+                                          <StudyNotesRenderer content={currentStudyNotes!} />
+                                      </div>
+                                  )}
+                              </div>
+                         )}
+
+                         {/* Fallback if tab exists but both sections are empty */}
+                         {!hasSummaryContent && !hasStudyNotesContent && (
+                             <div className="text-muted-foreground text-center py-4">
+                                 No summary or study notes were generated for this conversation.
+                             </div>
+                         )}
+                     </TabsContent>
+                 )}
+
+
+                {/* Key Topics Tab Content */}
+                {hasKeyTopicsContent && keyTopics && keyTopics.length > 0 && (
+                    <TabsContent value="topics">
+                        <div className="space-y-4">
+                        <h3 className="text-lg font-medium flex items-center text-foreground">
+                            <Tags className="mr-2 h-4 w-4" /> Key Topics
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                            {keyTopics.map((topic, index) => (
+                            <Badge key={index} variant="secondary" className="text-sm py-1 px-2.5">
+                                {topic}
+                            </Badge>
+                            ))}
+                        </div>
+                        </div>
+                    </TabsContent>
+                )}
+                 {hasKeyTopicsContent && (!keyTopics || keyTopics.length === 0) && (
+                     <TabsContent value="topics">
+                          <div className="text-muted-foreground text-center py-4">
+                             No key topics were identified in this conversation.
+                           </div>
+                     </TabsContent>
+                 )}
+
+                 {/* Concept Map Tab Content */}
+                {hasConceptsContent && conceptsMap && (
+                    <TabsContent value="concepts">
+                        <div className="space-y-4">
+                        <h3 className="text-lg font-medium flex items-center text-foreground">
+                            <Map className="mr-2 h-4 w-4" /> Concept Map
+                        </h3>
+                         <ScrollArea className="h-[300px] w-full">
+                             {/* Ensure good contrast for concept map display */}
+                            <div className="whitespace-pre-wrap text-sm bg-muted/50 dark:bg-muted/20 p-4 rounded-md border border-border/50 text-foreground/90">
+                                {typeof conceptsMap === 'string' ? conceptsMap : JSON.stringify(conceptsMap, null, 2)}
+                            </div>
+                        </ScrollArea>
+                        </div>
+                    </TabsContent>
+                )}
+                 {hasConceptsContent && !conceptsMap && (
+                    <TabsContent value="concepts">
+                        <div className="text-muted-foreground text-center py-4">
+                             No concept map was generated for this conversation.
+                        </div>
+                    </TabsContent>
+                )}
+
+                 {/* Code Analysis Tab Content */}
+                {hasCodeAnalysisContent && codeAnalysis && (
+                     <TabsContent value="code">
+                        <div className="space-y-6">
+                            <h3 className="text-lg font-medium flex items-center text-foreground">
+                            <Code className="mr-2 h-4 w-4" /> Code Analysis
+                            </h3>
+                            {codeAnalysis.learnedConcept && (
+                                 <div className="bg-secondary/30 dark:bg-secondary/10 p-4 rounded-md border border-border/50">
+                                     {/* Ensure better contrast for Concept Learned title */}
+                                    <h4 className="text-sm font-semibold mb-1.5 text-foreground dark:text-foreground/90">Concept Learned:</h4>
+                                     {/* Ensure better contrast for Concept Learned text */}
+                                    <p className="whitespace-pre-wrap text-sm text-foreground/90 dark:text-foreground/90">{codeAnalysis.learnedConcept}</p>
+                                </div>
+                            )}
+                            {codeAnalysis.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0 && (
+                                <Card className="bg-muted/10 dark:bg-muted/5 overflow-hidden border-border/50 shadow-sm">
+                                    <CardHeader className="p-3 pb-2 bg-muted/20 dark:bg-muted/10 border-b border-border/50">
+                                        <div className="flex justify-between items-start md:items-center flex-col md:flex-row">
+                                             {/* Use CardTitle semantically but style as needed */}
+                                            <CardTitle className="text-sm font-medium text-secondary-foreground">
+                                                Final Code Example
+                                            </CardTitle>
+                                            {codeAnalysis.codeLanguage && <Badge variant="outline" size="sm" className="mt-1 md:mt-0 text-xs">{codeAnalysis.codeLanguage}</Badge>}
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="p-0">
+                                        <ScrollArea className="max-h-[400px] w-full">
+                                             {/* Ensure good contrast for code */}
+                                            <pre className="p-4 text-xs text-foreground whitespace-pre-wrap break-words font-mono bg-muted/30 dark:bg-muted/20">
+                                                <code>{codeAnalysis.finalCodeSnippet}</code>
+                                            </pre>
+                                        </ScrollArea>
+                                    </CardContent>
+                                </Card>
+                            )}
+                             {/* Fallback message if no concept or snippet */}
+                             {!codeAnalysis.learnedConcept && !(codeAnalysis.finalCodeSnippet && codeAnalysis.finalCodeSnippet.trim().length > 0) && (
+                                  <div className="text-muted-foreground text-center py-4">
+                                    No specific code insights were generated.
+                                  </div>
+                             )}
+                        </div>
+                    </TabsContent>
+                )}
+                 {hasCodeAnalysisContent && !codeAnalysis && (
+                     <TabsContent value="code">
+                         <div className="text-muted-foreground text-center py-4">
+                             No code analysis was generated for this conversation.
+                         </div>
+                     </TabsContent>
+                 )}
+             </Tabs>
+         )}
        </CardContent>
-       <CardFooter className="border-t border-border/50 pt-4">
-         <Button
-             onClick={handleSaveAllInsights}
-             disabled={isSaving || !anythingToSave}
-             aria-label="Save All Insights"
-             className={cn(
-                 "w-full md:w-auto",
-                  !anythingToSave && "cursor-not-allowed opacity-50"
-             )}
-         >
-             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
-             {isSaving ? 'Saving...' : 'Save Insights to My Learnings'}
-         </Button>
-         {saveState?.error && <p className="text-xs text-destructive ml-4">{saveState.error}</p>}
-         {saveState?.success && saveState.info && <p className="text-xs text-green-600 dark:text-green-400 ml-4">{saveState.info}</p>}
-       </CardFooter>
+       {/* Only show footer if there's something potentially saveable */}
+        {(anythingToSave || isSaving || (saveState && saveState.error)) && (
+            <CardFooter className="border-t border-border/50 pt-4 flex justify-between items-center">
+             <Button
+                 onClick={handleSaveAllInsights}
+                 disabled={isSaving || !anythingToSave}
+                 aria-label="Save All Insights"
+                 className={cn(
+                     "w-full md:w-auto",
+                      !anythingToSave && "cursor-not-allowed opacity-50"
+                 )}
+             >
+                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+                 {isSaving ? 'Saving...' : 'Save Insights to My Learnings'}
+             </Button>
+             {/* Display save status messages */}
+             <div className="text-xs ml-4 flex-grow text-right">
+                 {saveState?.error && <p className="text-destructive">{saveState.error}</p>}
+                 {saveState?.success && saveState.info && <p className="text-green-600 dark:text-green-400">{saveState.info}</p>}
+             </div>
+           </CardFooter>
+       )}
+
      </Card>
   );
 }
-
