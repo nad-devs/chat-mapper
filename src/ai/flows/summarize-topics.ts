@@ -7,6 +7,8 @@
  * - SummarizeTopicsOutput - The return type for the summarizeTopics function.
  */
 
+import {db} from '@/lib/firebase';
+import {collection, query, where, getDocs} from 'firebase/firestore';
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
@@ -25,6 +27,7 @@ const SummarizeTopicsOutputSchema = z.object({
   keyTopics: z.array(z.string()).describe('A list of the most important specific topics or terms discussed (e.g., "Python Dictionaries", "Recursion", "Valid Anagram Problem", "CSS Flexbox").'),
   category: z.string().nullable().describe('The main category of the conversation (e.g., "Backend Development", "Data Structures & Algorithms", "Leetcode Problem", "Frontend Frameworks", "Web Design", "General Conversation", "Other Technical"). Null if category is unclear.'),
   mainProblemOrTopicName: z.string().nullable().describe('A concise, human-readable title for the conversation, ideally the specific problem name (e.g., "Contains Duplicate Problem") or the core topic discussed. Null if not identifiable.'),
+ isDuplicate: z.boolean().optional().describe('Flag indicating if a topic with the same mainProblemOrTopicName already exists.'),
 });
 export type SummarizeTopicsOutput = z.infer<typeof SummarizeTopicsOutputSchema>;
 
@@ -65,12 +68,28 @@ const summarizeTopicsFlow = ai.defineFlow(
     name: 'summarizeTopicsFlow',
     inputSchema: SummarizeTopicsInputSchema,
     outputSchema: SummarizeTopicsOutputSchema,
-  },
-  async input => {
+  }, async input => {
     const {output} = await summarizeTopicsPrompt(input);
-    // Ensure output is not null before returning
-    if (!output) {
-        // Provide a default structure on failure, matching the schema
+
+ if (!output || !output.mainProblemOrTopicName) {
+ // Provide a default structure on failure or if no topic name is identified
+ return { learningSummary: "", keyTopics: [], category: null, mainProblemOrTopicName: null };
+    }
+
+    // Check for existing topics with the same mainProblemOrTopicName
+    const topicsRef = collection(db, 'topics');
+    const q = query(topicsRef, where('mainProblemOrTopicName', '==', output.mainProblemOrTopicName));
+    const querySnapshot = await getDocs(q);
+
+    const isDuplicate = !querySnapshot.empty;
+
+    if (isDuplicate) {
+        // Return the output with the duplicate flag set
+ return {...output, isDuplicate: true};
+    } else {
+ // Ensure all fields are returned, defaulting if necessary and add the duplicate flag
+
+
         return { learningSummary: "", keyTopics: [], category: null, mainProblemOrTopicName: null };
     }
     // Ensure all fields are returned, defaulting if necessary
@@ -78,8 +97,9 @@ const summarizeTopicsFlow = ai.defineFlow(
         learningSummary: output.learningSummary || "",
         keyTopics: output.keyTopics || [],
         category: output.category !== undefined ? output.category : null,
-        mainProblemOrTopicName: output.mainProblemOrTopicName !== undefined ? output.mainProblemOrTopicName : null
-    };
+ mainProblemOrTopicName: output.mainProblemOrTopicName !== undefined ? output.mainProblemOrTopicName : null,
+ isDuplicate: false, // Explicitly set to false for non-duplicates
+ };
   }
 );
 

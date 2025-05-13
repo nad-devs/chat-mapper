@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import * as React from 'react';
@@ -12,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
-import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive, Edit, Save, X, Tag, Loader2 } from 'lucide-react'; // Added Loader2
+import { AlertTriangle, ArrowLeft, Inbox, CalendarDays, Folder, FileText, Code, Lightbulb, Archive, Edit, Save, X, Tag, Loader2, GripVertical } from 'lucide-react'; // Added GripVertical
 import Link from 'next/link';
 import { format, isSameDay } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
@@ -141,6 +139,10 @@ export default function LearningsPage() {
   const [currentEditCategoryValue, setCurrentEditCategoryValue] = React.useState<string>('');
   const [updateCategoryState, updateCategoryFormAction, isUpdateCategoryPending] = useActionState(updateEntryCategoryAction, null);
 
+  // State for drag and drop
+  const [draggedItemId, setDraggedItemId] = React.useState<string | null>(null);
+  const [dragOverCategory, setDragOverCategory] = React.useState<string | null>(null);
+
 
   const fetchLearnings = React.useCallback(async () => {
     setIsLoading(true);
@@ -188,7 +190,7 @@ export default function LearningsPage() {
       // Preserve active accordion items if they still exist, otherwise open all new ones
       setActiveAccordionItems(prev => {
         const newActiveItems = Object.keys(grouped);
-        if (prev.every(item => newActiveItems.includes(item)) && prev.length === newActiveItems.length) {
+        if (prev.every(item => newActiveItems.includes(item)) && prev.length === newActiveItems.length && !draggedItemId) { // Don't auto-collapse/expand during drag
           return prev;
         }
         return newActiveItems;
@@ -199,14 +201,14 @@ export default function LearningsPage() {
       setGroupedLearnings({});
        setActiveAccordionItems([]);
     }
-  }, [selectedDate, allLearnings]);
+  }, [selectedDate, allLearnings, draggedItemId]); // Add draggedItemId to dependencies
 
-  // Effect to handle category update action result
+  // Effect to handle category update action result (for both edit and drag-drop)
   React.useEffect(() => {
     if (updateCategoryState) {
         if (updateCategoryState.success && updateCategoryState.info) {
             toast({ title: "Category Updated", description: updateCategoryState.info });
-            setEditingCategoryEntryId(null); // Close editor
+            setEditingCategoryEntryId(null); 
             setCurrentEditCategoryValue('');
             fetchLearnings(); // Re-fetch to reflect changes
         } else if (updateCategoryState.error) {
@@ -237,8 +239,64 @@ export default function LearningsPage() {
     });
   };
 
+  // --- Drag and Drop Handlers ---
+  const handleDragStart = (event: React.DragEvent<HTMLDivElement>, entryId: string) => {
+    event.dataTransfer.setData("text/plain", entryId);
+    setDraggedItemId(entryId);
+    event.dataTransfer.effectAllowed = "move";
+  };
 
-  if (isLoading && !allLearnings) { // Only show full page skeleton on initial load
+  const handleDragEnd = () => {
+    setDraggedItemId(null);
+    setDragOverCategory(null);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault(); // Necessary to allow dropping
+    event.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>, category: string) => {
+    event.preventDefault();
+    if (draggedItemId) { // Only highlight if an item is being dragged
+      setDragOverCategory(category);
+    }
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+     // Check if the mouse is leaving the accordion item itself, not just moving over a child
+    if (event.currentTarget.contains(event.relatedTarget as Node)) {
+        return;
+    }
+    setDragOverCategory(null);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>, newCategoryValue: string) => {
+    event.preventDefault();
+    const entryId = event.dataTransfer.getData("text/plain");
+    const droppedOnCategory = newCategoryValue;
+
+    if (entryId && draggedItemId === entryId) {
+      // Check if the item was dropped on a different category
+      const originalEntry = allLearnings?.find(e => e.id === entryId);
+      if (originalEntry && (originalEntry.category || 'Uncategorized') !== droppedOnCategory) {
+        console.log(`[DragDrop] Dropped entry ${entryId} onto category ${droppedOnCategory}`);
+        const formData = new FormData();
+        formData.append('entryId', entryId);
+        formData.append('newCategory', droppedOnCategory === 'Uncategorized' ? '' : droppedOnCategory); // Send empty string for 'Uncategorized'
+        startTransition(() => {
+            updateCategoryFormAction(formData);
+        });
+      } else {
+        console.log(`[DragDrop] Dropped entry ${entryId} onto the same category or invalid state.`);
+      }
+    }
+    setDragOverCategory(null);
+    setDraggedItemId(null); // Reset dragged item ID after drop
+  };
+
+
+  if (isLoading && !allLearnings) { 
     return (
       <main className="flex min-h-screen flex-col items-center p-4 md:p-12 lg:p-24 bg-background text-foreground">
         <div className="w-full max-w-6xl space-y-8">
@@ -322,19 +380,16 @@ export default function LearningsPage() {
                 </Button>
             </Link>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">My Saved Learnings</h1>
-          <p className="text-muted-foreground mt-2">Browse your saved entries by category. Use the calendar to filter by date.</p>
+          <p className="text-muted-foreground mt-2">Browse your saved entries. Drag and drop entries to re-categorize them. Use the calendar to filter by date.</p>
         </header>
 
         <div className="flex flex-col md:flex-row gap-8">
-          {/* Calendar Section */}
           <div className="md:w-auto md:min-w-[280px] lg:min-w-[320px] flex justify-center md:justify-start">
-             {/* Apply card styling to calendar container */}
             <Card className="p-0 bg-card text-card-foreground border-border shadow-sm">
               <Calendar
                 mode="single"
                 selected={selectedDate}
                 onSelect={setSelectedDate}
-                // Ensure calendar styles inherit correctly
                 className="rounded-md border-0 shadow-none [&_button]:text-foreground [&_button[aria-selected]]:bg-primary [&_button[aria-selected]]:text-primary-foreground [&_button:disabled]:text-muted-foreground [&_button]:border-border"
                 disabled={(date) => date > new Date() || date < new Date("2000-01-01")}
                 initialFocus
@@ -349,7 +404,6 @@ export default function LearningsPage() {
             </Card>
           </div>
 
-          {/* Entries Section */}
           <div className="flex-1">
              <h2 className="text-2xl font-semibold mb-4 text-foreground">
               {selectedDate ? `Entries for ${format(selectedDate, "MMMM d, yyyy")}` : "All Entries"} by Category
@@ -365,37 +419,55 @@ export default function LearningsPage() {
                 {Object.entries(groupedLearnings)
                   .sort(([categoryA], [categoryB]) => categoryA.localeCompare(categoryB))
                   .map(([category, entries]) => (
-                  <AccordionItem value={category} key={category} className="border border-border bg-card rounded-lg shadow-sm overflow-hidden">
-                     {/* Style Accordion Trigger */}
+                  <AccordionItem 
+                    value={category} 
+                    key={category} 
+                    className={cn(
+                        "border border-border bg-card rounded-lg shadow-sm overflow-hidden transition-all duration-150 ease-in-out",
+                        dragOverCategory === category && "ring-2 ring-primary ring-offset-2 bg-accent/10", // Highlight for drop target
+                        draggedItemId && dragOverCategory === category && "border-primary shadow-lg"
+                    )}
+                    onDragOver={handleDragOver}
+                    onDragEnter={(e) => handleDragEnter(e, category)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, category)}
+                  >
                     <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/50 text-lg font-medium text-foreground [&[data-state=open]>svg]:text-accent">
                        <div className="flex items-center gap-2">
                            <Folder className="h-5 w-5 text-accent" />
                            {category} ({entries.length})
                        </div>
                     </AccordionTrigger>
-                    {/* Style Accordion Content */}
                     <AccordionContent className="px-4 pb-4 pt-0 bg-background/50 dark:bg-background/20">
                         <ScrollArea className="h-[500px] pr-3 -mr-3">
                              <div className="space-y-4 pt-2">
                                 {entries.map((entry) => (
-                                     // Style individual entry card
-                                    <Card key={entry.id} className="overflow-hidden shadow-sm bg-card text-card-foreground border border-border/50">
-                                        <CardHeader className="bg-muted/50 dark:bg-muted/20 p-3 border-b border-border/50">
-                                            <CardTitle className="text-base flex items-center justify-between text-foreground">
-                                                <div className="flex items-center gap-2">
-                                                    <Archive className="h-4 w-4 text-primary" />
+                                    <Card 
+                                        key={entry.id} 
+                                        draggable={true}
+                                        onDragStart={(e) => handleDragStart(e, entry.id!)}
+                                        onDragEnd={handleDragEnd}
+                                        className={cn(
+                                            "overflow-hidden shadow-sm bg-card text-card-foreground border border-border/50 cursor-grab active:cursor-grabbing transition-opacity",
+                                            draggedItemId === entry.id && "opacity-50 ring-2 ring-primary scale-95 shadow-xl"
+                                        )}
+                                    >
+                                        <CardHeader className="bg-muted/50 dark:bg-muted/20 p-3 border-b border-border/50 flex flex-row items-center justify-between">
+                                            <div className="flex-grow">
+                                                <CardTitle className="text-base flex items-center text-foreground">
+                                                    <Archive className="h-4 w-4 text-primary mr-2" />
                                                     {entry.topicName}
-                                                </div>
-                                            </CardTitle>
-                                            {entry.createdAtISO && (
-                                            <CardDescription className="text-xs pt-1 text-muted-foreground">
-                                                Saved at: {format(new Date(entry.createdAtISO), "h:mm a")}
-                                                {!selectedDate && ` on ${format(new Date(entry.createdAtISO), "MMM d, yyyy")}`}
-                                            </CardDescription>
-                                            )}
+                                                </CardTitle>
+                                                {entry.createdAtISO && (
+                                                <CardDescription className="text-xs pt-1 text-muted-foreground">
+                                                    Saved at: {format(new Date(entry.createdAtISO), "h:mm a")}
+                                                    {!selectedDate && ` on ${format(new Date(entry.createdAtISO), "MMM d, yyyy")}`}
+                                                </CardDescription>
+                                                )}
+                                            </div>
+                                            <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab opacity-70 hover:opacity-100" aria-hidden="true" />
                                         </CardHeader>
                                         <CardContent className="p-3 space-y-4">
-                                            {/* Category Display/Edit */}
                                             <div className="mb-2">
                                                 <label className="text-xs font-medium text-muted-foreground block mb-1">Category</label>
                                                 {editingCategoryEntryId === entry.id ? (
@@ -427,17 +499,14 @@ export default function LearningsPage() {
                                                 )}
                                             </div>
 
-                                            {/* Display Learning Summary */}
                                             {entry.learningSummary && (
                                                 <div>
                                                     <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-secondary-foreground"><FileText className="h-4 w-4" /> Learning Summary</h4>
-                                                     {/* Ensure rendered content has good contrast */}
                                                     <div className="bg-secondary/30 dark:bg-secondary/10 p-3 rounded-md border border-border/50 text-foreground">
                                                       <SimpleMarkdownRenderer content={entry.learningSummary} />
                                                     </div>
                                                 </div>
                                             )}
-                                            {/* Display Study Notes */}
                                             {entry.studyNotesContent && (
                                                 <div>
                                                     <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-secondary-foreground"><Lightbulb className="h-4 w-4" /> Study Notes</h4>
@@ -446,7 +515,6 @@ export default function LearningsPage() {
                                                     </div>
                                                 </div>
                                             )}
-                                            {/* Display Code Snippet */}
                                             {entry.codeSnippetContent && (
                                                 <div>
                                                     <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-secondary-foreground">
@@ -454,14 +522,12 @@ export default function LearningsPage() {
                                                         {entry.codeLanguage && <Badge variant="secondary" size="sm" className="ml-auto text-xs">{entry.codeLanguage}</Badge>}
                                                     </h4>
                                                     <ScrollArea className="max-h-[300px] w-full">
-                                                         {/* Ensure code block styling has good contrast */}
                                                         <pre className="p-3 text-xs bg-muted/50 dark:bg-muted/30 text-foreground whitespace-pre-wrap break-words rounded-md border border-border/50 font-mono">
                                                             <code>{entry.codeSnippetContent}</code>
                                                         </pre>
                                                     </ScrollArea>
                                                 </div>
                                             )}
-                                             {/* Fallback message */}
                                             {!entry.learningSummary && !entry.studyNotesContent && !entry.codeSnippetContent && (
                                                 <p className="text-sm text-muted-foreground italic">No content saved for this entry.</p>
                                             )}
@@ -475,7 +541,6 @@ export default function LearningsPage() {
                 ))}
               </Accordion>
             ) : (
-               // Style for "No entries found" card
               <Card className="flex flex-col items-center justify-center p-10 text-center bg-card text-card-foreground border-border shadow-sm">
                 <CalendarDays className="h-12 w-12 text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">
@@ -494,5 +559,3 @@ export default function LearningsPage() {
     </main>
   );
 }
-
-
